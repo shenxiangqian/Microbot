@@ -491,4 +491,37 @@ public final class LoginManager {
             log.warn("Failed to set target world {}", worldNumber, ex);
         }
     }
+
+    /**
+     * Attempts a direct session-based login if session credentials are available.
+     * This is called automatically when client detects --session-id and --character-id parameters.
+     *
+     * @return true if session login was attempted, false otherwise
+     */
+    public static boolean attemptDirectSessionLogin() {
+        if (!DirectSessionLogin.hasSessionCredentials()) {
+            return false;
+        }
+
+        if (isLoggedIn()) {
+            log.debug("Already logged in, skipping direct session login");
+            return false;
+        }
+
+        if (LOGIN_ATTEMPT_ACTIVE.get()) {
+            log.debug("Login attempt already active, skipping direct session login");
+            return false;
+        }
+
+        synchronized (LOGIN_LOCK) {
+            LOGIN_ATTEMPT_ACTIVE.set(true);
+        }
+
+        try {
+            return DirectSessionLogin.attemptLogin();
+        } finally {
+            // Session login is instant, no need to keep lock
+            LOGIN_ATTEMPT_ACTIVE.set(false);
+        }
+    }
 }

@@ -17,35 +17,81 @@ public class ProxyConfiguration {
 
     /**
      * Sets up the proxy configuration based on the provided options.
-     * @param options
-     * @param proxyInfo
+     * Supports both URL format (--proxy) and separate parameters (--proxy-type, --proxy-host, etc.)
+     * 
+     * @param options Command line options
+     * @param proxyInfo URL-based proxy specification
+     * @param proxyType Proxy type (socks5, socks4, http)
+     * @param proxyHost Proxy host
+     * @param proxyPort Proxy port
+     * @param proxyUser Proxy username
+     * @param proxyPass Proxy password
      */
-    public static void setupProxy(OptionSet options, ArgumentAcceptingOptionSpec<String> proxyInfo) {
-        if (!options.has(proxyInfo)) {
+    public static void setupProxy(
+            OptionSet options,
+            ArgumentAcceptingOptionSpec<String> proxyInfo,
+            ArgumentAcceptingOptionSpec<String> proxyType,
+            ArgumentAcceptingOptionSpec<String> proxyHost,
+            ArgumentAcceptingOptionSpec<Integer> proxyPort,
+            ArgumentAcceptingOptionSpec<String> proxyUser,
+            ArgumentAcceptingOptionSpec<String> proxyPass) {
+        
+        // Check if separate parameters are provided
+        boolean hasSeparateParams = options.has(proxyHost);
+        boolean hasUrlFormat = options.has(proxyInfo);
+        
+        if (!hasSeparateParams && !hasUrlFormat) {
+            // No proxy configuration provided
             return;
         }
-
-        URI uri = URI.create(options.valueOf(proxyInfo));
-
-        if (options.has("proxy-type")) {
-            Microbot.showMessage("Proxy type is no longer supported, please use the format -proxy=socks://user:pass@host:port or http://user:pass@host:port");
+        
+        if (hasSeparateParams && hasUrlFormat) {
+            Microbot.showMessage("Cannot use both --proxy and separate proxy parameters (--proxy-host, etc.) at the same time. Please choose one method.");
             System.exit(1);
         }
-
-        String host = uri.getHost();
-        String scheme = Optional.ofNullable(uri.getScheme()).orElse("").toLowerCase(Locale.ROOT);
-
+        
+        String host;
+        int port;
+        String scheme;
+        String user = null;
+        String pass = null;
+        
+        if (hasSeparateParams) {
+            // Use separate parameters
+            host = options.valueOf(proxyHost);
+            port = options.has(proxyPort) ? options.valueOf(proxyPort) : 1080;
+            scheme = options.has(proxyType) ? options.valueOf(proxyType).toLowerCase(Locale.ROOT) : "socks5";
+            user = options.has(proxyUser) ? options.valueOf(proxyUser) : null;
+            pass = options.has(proxyPass) ? options.valueOf(proxyPass) : null;
+            
+            if (host == null || host.isEmpty()) {
+                Microbot.showMessage("Proxy host is required when using separate proxy parameters");
+                System.exit(1);
+            }
+        } else {
+            // Use URL format (legacy)
+            URI uri = URI.create(options.valueOf(proxyInfo));
+            
+            if (options.has("proxy-type")) {
+                Microbot.showMessage("Proxy type is no longer supported, please use the format -proxy=socks://user:pass@host:port or http://user:pass@host:port");
+                System.exit(1);
+            }
+            
+            host = uri.getHost();
+            scheme = Optional.ofNullable(uri.getScheme()).orElse("").toLowerCase(Locale.ROOT);
+            port = validatePort(uri.getPort());
+            
+            String[] credentials = extractCredentials(uri);
+            user = credentials[0];
+            pass = credentials[1];
+        }
+        
         validateProxyScheme(scheme);
-
-        int port = validatePort(uri.getPort());
-
-        String[] credentials = extractCredentials(uri);
-        String user = credentials[0];
-        String pass = credentials[1];
-
+        validatePort(port);
+        
         configureProxy(host, port);
-
-        if (user != null) {
+        
+        if (user != null && !user.isEmpty()) {
             setupAuthenticator(user, pass);
         }
     }

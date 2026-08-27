@@ -82,16 +82,19 @@ import net.runelite.client.externalplugins.ExternalPluginManager;
 import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.externalplugins.MicrobotPluginManager;
+import net.runelite.client.plugins.microbot.util.security.DirectSessionLogin;
 import net.runelite.client.proxy.ProxyChecker;
 import net.runelite.client.proxy.ProxyConfiguration;
 import net.runelite.client.rs.ClientLoader;
 import net.runelite.client.ui.ClientUI;
+import net.runelite.client.ui.DrawManager;
 import net.runelite.client.ui.FatalErrorDialog;
 import net.runelite.client.ui.SplashScreen;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.OSType;
 import net.runelite.client.util.ReflectUtil;
 import net.runelite.client.util.CrashReportFormatter;
+import net.runelite.client.util.performance.FpsThrottle;
 import net.runelite.http.api.RuneLiteAPI;
 import okhttp3.Cache;
 import okhttp3.OkHttpClient;
@@ -218,15 +221,47 @@ public class RuneLite
 
         final ArgumentAcceptingOptionSpec<String> proxyInfo = parser.accepts("proxy", "Use a specified proxy. Format: scheme://user:pass@host:port")
                 .withRequiredArg().ofType(String.class);
+        
+        // New separate proxy parameters
+        final ArgumentAcceptingOptionSpec<String> proxyType = parser.accepts("proxy-type", "Proxy type (socks5, socks4, http)")
+                .withRequiredArg().ofType(String.class);
+        final ArgumentAcceptingOptionSpec<String> proxyHost = parser.accepts("proxy-host", "Proxy server host")
+                .withRequiredArg().ofType(String.class);
+        final ArgumentAcceptingOptionSpec<Integer> proxyPort = parser.accepts("proxy-port", "Proxy server port")
+                .withRequiredArg().ofType(Integer.class);
+        final ArgumentAcceptingOptionSpec<String> proxyUser = parser.accepts("proxy-user", "Proxy username")
+                .withRequiredArg().ofType(String.class);
+        final ArgumentAcceptingOptionSpec<String> proxyPass = parser.accepts("proxy-pass", "Proxy password")
+                .withRequiredArg().ofType(String.class);
+        
         final ArgumentAcceptingOptionSpec<File> sessionfile = parser.accepts("sessionfile", "Use a specified session file")
                 .withRequiredArg()
                 .withValuesConvertedBy(new ConfigFileConverter())
                 .defaultsTo(DEFAULT_SESSION_FILE);
 
+        final ArgumentAcceptingOptionSpec<String> sessionIdOpt = parser.accepts("session-id", "Session ID for direct login")
+                .withRequiredArg()
+                .ofType(String.class);
+
+        final ArgumentAcceptingOptionSpec<String> characterIdOpt = parser.accepts("character-id", "Character ID for direct login")
+                .withRequiredArg()
+                .ofType(String.class);
+
+        final ArgumentAcceptingOptionSpec<Integer> fpsOpt = parser.accepts("fps", "Set target FPS (frames per second)")
+                .withRequiredArg()
+                .ofType(Integer.class);
+
 		final OptionSpec<Void> insecureWriteCredentials = parser.accepts("insecure-write-credentials", "Dump authentication tokens from the Jagex Launcher to a text file to be used for development");
 
 		parser.accepts("help", "Show this text").forHelp();
 		OptionSet options = parser.parse(args);
+
+		// Extract session-id and character-id for direct session login
+		String sessionId = options.has(sessionIdOpt) ? options.valueOf(sessionIdOpt) : null;
+		String characterId = options.has(characterIdOpt) ? options.valueOf(characterIdOpt) : null;
+
+		// Extract FPS setting
+		Integer targetFps = options.has(fpsOpt) ? options.valueOf(fpsOpt) : null;
 
         if (options.has("clean-jagex-launcher")) {
             System.out.println("clean-jagex-launcher option is enabled. This will delete your credentials.properties file to allow logging in with a username/password");
@@ -278,7 +313,7 @@ public class RuneLite
 			}
 		}
 
-		ProxyConfiguration.setupProxy(options, proxyInfo);
+		ProxyConfiguration.setupProxy(options, proxyInfo, proxyType, proxyHost, proxyPort, proxyUser, proxyPass);
 
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) ->
         {
@@ -348,6 +383,13 @@ public class RuneLite
 			log.info("Java VM arguments: {}", String.join(" ", runtime.getInputArguments()));
 
 			final long start = System.currentTimeMillis();
+
+			// Set session credentials for direct session login if provided
+			if (sessionId != null && characterId != null) {
+				log.info("Session-based login parameters detected");
+				DirectSessionLogin.setSessionCredentials(sessionId, characterId);
+			}
+
 			injector = Guice.createInjector(new RuneLiteModule(
 				okHttpClient,
 				clientLoader,
@@ -363,6 +405,14 @@ public class RuneLite
 			));
 
 			injector.getInstance(RuneLite.class).start();
+
+			// Apply --fps throttle independently of the FpsPlugin
+			if (targetFps != null)
+			{
+				log.info("Setting target FPS to: {}", targetFps);
+				DrawManager drawManager = injector.getInstance(DrawManager.class);
+				drawManager.registerEveryFrameListener(new FpsThrottle(targetFps));
+			}
 
 			final long end = System.currentTimeMillis();
 			final long uptime = runtime.getUptime();
