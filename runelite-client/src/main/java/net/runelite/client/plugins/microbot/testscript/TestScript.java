@@ -14,6 +14,7 @@ public class TestScript extends Script {
             if(!super.run())return;
 
             log.debug("hello world");
+            log.warn("hello world 2222222");
 
         },0,600, TimeUnit.MILLISECONDS);
         return true;
