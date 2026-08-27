@@ -1,5 +1,6 @@
 package net.runelite.client.plugins.microbot.testscript;
 
+import lombok.extern.java.Log;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.Script;
@@ -13,11 +14,17 @@ public class TestScript extends Script {
             if(!Microbot.isLoggedIn())return;
             if(!super.run())return;
 
-            log.debug("hello world");
-            log.warn("hello world 2222222");
-            log.error("hello world 33333");
+//            log.debug("hello world");
+//            log.warn("hello world 2222222");
+//            log.error("hello world 33333");
+            log.info("{}", Microbot.getClient().getFPS());
 
         },0,600, TimeUnit.MILLISECONDS);
         return true;
     }
+
+    public int getFps(){
+        return Microbot.getClient().getFPS();
+    }
+
 }
