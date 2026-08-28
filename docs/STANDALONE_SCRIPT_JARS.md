@@ -342,13 +342,19 @@ A healthy JAR contains:
 3. Add a **Gradle** run configuration for
    `:microbot-example-scripts:installLocal`.
 4. Add a second **Gradle** run configuration for `:client:run`.
-5. Debug the client, set breakpoints in the plugin — the JAR on the side-load
-   directory is rebuilt by `installLocal`, so you only need to restart the
-   client to pick up changes.
+5. Debug the client and set breakpoints in the plugin. After `installLocal`
+   replaces the JAR, click the refresh button beside the script search field.
 
-> **Hot-reload is not supported.** Side-loaded plugins are loaded once per
-> client startup. Plan on restarting the client when iterating on the
-> plugin.
+The refresh action stops and unloads every JAR from `microbot-plugins`, closes
+its class loader, and loads a fresh runtime copy. Reloaded plugins remain
+disabled and must be enabled manually. Plugin configuration is preserved, but
+in-memory script state is not. Side-loaded plugins must not set
+`alwaysOn = true` because a refreshed plugin must remain stopped.
+
+The client loads a shadow copy under `~/.runelite/cache/microbot-plugin-runtime/`
+so the source JAR can be overwritten while the client is running. If a script
+does not release its executor threads during unload, that plugin is blocked
+from loading again until the client restarts.
 
 ---
 
@@ -358,8 +364,8 @@ A healthy JAR contains:
 
 1. Bump `version = "1.0.1"` in `@PluginDescriptor`.
 2. Rebuild: `./gradlew :microbot-example-scripts:installLocal`
-3. Restart the client. `MicrobotPluginManager` will see the new SHA-256 hash
-   if you've published to a hub, otherwise it will simply replace the JAR.
+3. Click the refresh button beside the script search field, then enable the
+   updated plugin manually.
 
 ### Remove
 
@@ -367,7 +373,7 @@ A healthy JAR contains:
 rm ~/.runelite/microbot-plugins/StandaloneExamplePlugin.jar
 ```
 
-Then restart the client. The plugin disappears from the config panel.
+Then click the refresh button. The plugin disappears from the config panel.
 
 ### Clean rebuild
 

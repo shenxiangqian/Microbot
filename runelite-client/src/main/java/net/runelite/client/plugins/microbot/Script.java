@@ -16,6 +16,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -37,6 +38,10 @@ public abstract class Script extends Global implements IScript {
         });
     protected ScheduledFuture<?> scheduledFuture;
     protected ScheduledFuture<?> mainScheduledFuture;
+
+    protected Script() {
+        ScriptLifecycleRegistry.register(this);
+    }
 
     /**
      * Indicates whether the main scheduled script loop is still active.
@@ -66,6 +71,29 @@ public abstract class Script extends Global implements IScript {
         }
         if (scheduledFuture != null && !scheduledFuture.isDone()) {
             scheduledFuture.cancel(true);
+        }
+    }
+
+    /**
+     * Permanently releases this script when its defining class loader is unloaded.
+     * Normal plugin disable/enable cycles must continue to use {@link #shutdown()}.
+     */
+    final boolean disposeForClassLoaderUnload(long timeoutMillis) {
+        ScriptHeartbeatRegistry.remove(this.getClass().getName());
+        try {
+            shutdown();
+        } catch (ThreadDeath ex) {
+            throw ex;
+        } catch (Throwable ex) {
+            log.warn("Error shutting down script {} during unload", getClass().getSimpleName(), ex);
+        }
+
+        scheduledExecutorService.shutdownNow();
+        try {
+            return scheduledExecutorService.awaitTermination(timeoutMillis, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            return false;
         }
     }
 

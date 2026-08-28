@@ -49,6 +49,8 @@ import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.DynamicGridLayout;
 import net.runelite.client.ui.PluginPanel;
 import net.runelite.client.ui.components.IconTextField;
+import net.runelite.client.util.ImageUtil;
+import net.runelite.client.util.SwingUtil;
 import net.runelite.client.util.Text;
 
 import javax.inject.Inject;
@@ -59,10 +61,13 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -75,6 +80,7 @@ public class MicrobotPluginListPanel extends MicrobotPluginPanel {
 
     private static final String RUNELITE_GROUP_NAME = MicrobotConfig.class.getAnnotation(ConfigGroup.class).value();
     private static final String PINNED_PLUGINS_CONFIG_KEY = "pinnedPlugins";
+    private static final ImageIcon REFRESH_ICON;
     private static final ImmutableList<String> CATEGORY_TAGS = ImmutableList.of(
             "Combat",
             "Chat",
@@ -85,6 +91,13 @@ public class MicrobotPluginListPanel extends MicrobotPluginPanel {
             "Skilling",
             "XP"
     );
+
+    static {
+        BufferedImage refreshIcon = ImageUtil.loadImageResource(
+                MicrobotPluginListPanel.class,
+                "/net/runelite/client/plugins/microbot/inventorysetups/update_icon.png");
+        REFRESH_ICON = new ImageIcon(refreshIcon);
+    }
 
     private final ConfigManager configManager;
     private final PluginManager pluginManager;
@@ -99,8 +112,10 @@ public class MicrobotPluginListPanel extends MicrobotPluginPanel {
     private final MicrobotMultiplexingPluginPanel muxer;
 
     private final IconTextField searchBar;
+    private final JButton refreshScriptsButton;
     private final JScrollPane scrollPane;
     private final MicrobotFixedWidthPanel mainPanel;
+    private final Map<Component, Boolean> refreshEnabledStates = new IdentityHashMap<>();
     private List<MicrobotPluginListItem> pluginList;
 
     @Inject
@@ -133,7 +148,7 @@ public class MicrobotPluginListPanel extends MicrobotPluginPanel {
 
         searchBar = new IconTextField();
         searchBar.setIcon(IconTextField.Icon.SEARCH);
-        searchBar.setPreferredSize(new Dimension(PluginPanel.PANEL_WIDTH - 20, 30));
+        searchBar.setPreferredSize(new Dimension(PluginPanel.PANEL_WIDTH - 55, 30));
         searchBar.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         searchBar.setHoverBackgroundColor(ColorScheme.DARK_GRAY_HOVER_COLOR);
         searchBar.getDocument().addDocumentListener(new DocumentListener() {
@@ -154,13 +169,25 @@ public class MicrobotPluginListPanel extends MicrobotPluginPanel {
         });
         CATEGORY_TAGS.forEach(searchBar.getSuggestionListModel()::addElement);
 
+        refreshScriptsButton = new JButton(REFRESH_ICON);
+        refreshScriptsButton.setPreferredSize(new Dimension(30, 30));
+        refreshScriptsButton.setMinimumSize(new Dimension(30, 30));
+        refreshScriptsButton.setMaximumSize(new Dimension(30, 30));
+        refreshScriptsButton.setToolTipText("Reload script JARs");
+        SwingUtil.removeButtonDecorations(refreshScriptsButton);
+        refreshScriptsButton.addActionListener(event -> refreshSideLoadedPlugins());
+
         setLayout(new BorderLayout());
         setBackground(ColorScheme.DARK_GRAY_COLOR);
 
         JPanel topPanel = new JPanel();
         topPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
         topPanel.setLayout(new BorderLayout(0, BORDER_OFFSET));
-        topPanel.add(searchBar, BorderLayout.CENTER);
+        JPanel searchPanel = new JPanel(new BorderLayout(5, 0));
+        searchPanel.setOpaque(false);
+        searchPanel.add(searchBar, BorderLayout.CENTER);
+        searchPanel.add(refreshScriptsButton, BorderLayout.EAST);
+        topPanel.add(searchPanel, BorderLayout.CENTER);
         add(topPanel, BorderLayout.NORTH);
 
         mainPanel = new MicrobotFixedWidthPanel(LIST_VIEW_WIDTH);
@@ -176,6 +203,56 @@ public class MicrobotPluginListPanel extends MicrobotPluginPanel {
         scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         scrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS);
         add(scrollPane, BorderLayout.CENTER);
+    }
+
+    private void refreshSideLoadedPlugins() {
+        refreshScriptsButton.setEnabled(false);
+        refreshScriptsButton.setToolTipText("Reloading script JARs...");
+        disablePluginControls(mainPanel);
+
+        microbotPluginManager.refreshSideLoadedPlugins().whenComplete((result, error) ->
+                SwingUtilities.invokeLater(() -> {
+                    refreshScriptsButton.setEnabled(true);
+                    restorePluginControls();
+                    if (error != null) {
+                        refreshScriptsButton.setToolTipText("Script refresh failed");
+                        log.warn("Unable to refresh side-loaded plugins", error);
+                        JOptionPane.showMessageDialog(
+                                this,
+                                "Unable to refresh script JARs. Check the client log for details.",
+                                "Script Refresh Failed",
+                                JOptionPane.ERROR_MESSAGE);
+                        return;
+                    }
+
+                    refreshScriptsButton.setToolTipText(result.getSummary());
+                    if (!result.isSuccessful()) {
+                        String failures = result.getFailures().entrySet().stream()
+                                .limit(8)
+                                .map(entry -> entry.getKey() + ": " + entry.getValue())
+                                .collect(Collectors.joining("\n"));
+                        JOptionPane.showMessageDialog(
+                                this,
+                                result.getSummary() + "\n\n" + failures,
+                                "Script Refresh Completed With Errors",
+                                JOptionPane.WARNING_MESSAGE);
+                    }
+                }));
+    }
+
+    private void disablePluginControls(Component component) {
+        refreshEnabledStates.put(component, component.isEnabled());
+        component.setEnabled(false);
+        if (component instanceof Container) {
+            for (Component child : ((Container) component).getComponents()) {
+                disablePluginControls(child);
+            }
+        }
+    }
+
+    private void restorePluginControls() {
+        refreshEnabledStates.forEach(Component::setEnabled);
+        refreshEnabledStates.clear();
     }
 
     public void rebuildPluginList() {

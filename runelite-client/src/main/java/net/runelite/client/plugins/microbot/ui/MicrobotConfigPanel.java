@@ -897,11 +897,14 @@ class MicrobotConfigPanel extends MicrobotPluginPanel {
 
     @Subscribe
     private void onExternalPluginsChanged(ExternalPluginsChanged ev) {
-        if (pluginManager.getPlugins().stream()
-                .noneMatch(p -> p == this.pluginConfig.getPlugin())) {
-            pluginList.getMuxer().popState();
-        }
-        SwingUtilities.invokeLater(this::rebuild);
+        SwingUtilities.invokeLater(() -> {
+            if (pluginManager.getPlugins().stream()
+                    .noneMatch(p -> p == this.pluginConfig.getPlugin())) {
+                pluginList.getMuxer().popState();
+                return;
+            }
+            rebuild();
+        });
     }
 
     @Subscribe

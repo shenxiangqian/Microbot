@@ -49,6 +49,7 @@ import net.runelite.client.events.ExternalPluginsChanged;
 import net.runelite.client.plugins.*;
 import net.runelite.client.plugins.microbot.MicrobotApi;
 import net.runelite.client.plugins.microbot.Microbot;
+import net.runelite.client.plugins.microbot.ScriptLifecycleRegistry;
 import net.runelite.client.plugins.microbot.util.misc.Rs2UiHelper;
 import net.runelite.client.ui.SplashScreen;
 import okhttp3.HttpUrl;
@@ -68,12 +69,12 @@ import java.io.InputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.net.Proxy;
 import java.net.ProxySelector;
-import java.net.URLClassLoader;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -85,6 +86,8 @@ import java.util.stream.Collectors;
 @Singleton
 public class MicrobotPluginManager {
     private static final File PLUGIN_DIR = new File(RuneLite.RUNELITE_DIR, "microbot-plugins");
+    private static final File RUNTIME_PLUGIN_DIR = new File(RuneLite.CACHE_DIR, "microbot-plugin-runtime");
+    private static final long SCRIPT_DISPOSE_TIMEOUT_MILLIS = 2_000L;
     private static final String INSTALLED_VERSION_GROUP = "microbotPluginVersions";
     private static final String INSTALLED_VERSION_KEY_PREFIX = "plugin.";
     private static final String UPDATE_NOTIFICATION_GROUP = "microbotPluginUpdateNotifications";
@@ -99,7 +102,9 @@ public class MicrobotPluginManager {
     private final ConfigManager configManager;
     private final MicrobotApi microbotApi;
 
-    private final Map<String, URLClassLoader> loaders = new ConcurrentHashMap<>();
+    private final Map<String, SideLoadedPluginDeployment> deployments = new ConcurrentHashMap<>();
+    private final Set<String> reloadBlockedInternalNames = ConcurrentHashMap.newKeySet();
+    private final Object sideLoadLock = new Object();
 
     @Inject
     @Named("safeMode")
@@ -108,6 +113,7 @@ public class MicrobotPluginManager {
     private final Map<String, MicrobotPluginManifest> manifestMap = new ConcurrentHashMap<>();
 
     private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
+    private final AtomicBoolean sideLoadRefreshInProgress = new AtomicBoolean(false);
     private volatile boolean profileRefreshInProgress = false;
     private static final String PLUGIN_PACKAGE = "net.runelite.client.plugins.microbot";
 
@@ -132,6 +138,8 @@ public class MicrobotPluginManager {
         this.microbotApi = microbotApi;
 
         PLUGIN_DIR.mkdirs();
+        RUNTIME_PLUGIN_DIR.mkdirs();
+        cleanupStaleRuntimeJars();
     }
 
     /**
@@ -320,11 +328,23 @@ public class MicrobotPluginManager {
     /**
      * Loads a single plugin from the sideload folder if not already loaded.
      */
-    private void loadSideLoadPlugin(String internalName) {
+    private SideLoadedPluginDeployment loadSideLoadPlugin(String internalName)
+            throws PluginInstantiationException, IOException {
+        return loadSideLoadPlugin(internalName, true);
+    }
+
+    private SideLoadedPluginDeployment loadSideLoadPlugin(String internalName, boolean allowAlwaysOn)
+            throws PluginInstantiationException, IOException {
         File pluginFile = getPluginJarFile(internalName);
         if (!pluginFile.exists()) {
-            log.debug("Plugin file {} does not exist", pluginFile);
-            return;
+            throw new IOException("Plugin file does not exist: " + pluginFile.getName());
+        }
+        if (deployments.containsKey(internalName)) {
+            return deployments.get(internalName);
+        }
+        if (reloadBlockedInternalNames.contains(internalName)) {
+            throw new PluginInstantiationException(
+                    "Plugin cannot be loaded again until the client is restarted: " + internalName);
         }
         Set<String> loadedInternalNames = pluginManager.getPlugins().stream()
                 .filter(p -> p.getClass().isAnnotationPresent(PluginDescriptor.class))
@@ -332,28 +352,55 @@ public class MicrobotPluginManager {
                 .map(p -> p.getClass().getSimpleName())
                 .collect(Collectors.toSet());
         if (loadedInternalNames.contains(internalName)) {
-            return;
+            throw new PluginInstantiationException("Plugin is already loaded: " + internalName);
         }
+
+        File runtimeJar = createRuntimeJarCopy(pluginFile);
+        PluginJarClassLoader classLoader = null;
+        List<Plugin> newPlugins = Collections.emptyList();
         try {
-            if (!verifyHash(internalName)) {
+            if ((manifestMap.containsKey(internalName) || lookupInstalledPluginVersion(internalName).isPresent())
+                    && !verifyHash(internalName)) {
                 log.warn("Plugin hash verification failed for: {}", internalName);
             }
             List<Class<?>> plugins = new ArrayList<>();
-            PluginJarClassLoader classLoader = new PluginJarClassLoader(pluginFile, getClass().getClassLoader());
-            loaders.put(internalName, classLoader);
+            classLoader = new PluginJarClassLoader(runtimeJar, getClass().getClassLoader());
             for (ClassPath.ClassInfo classInfo : ClassPath.from(classLoader).getAllClasses()) {
                 try {
                     Class<?> clazz = classLoader.loadClass(classInfo.getName());
+                    PluginDescriptor descriptor = clazz.getAnnotation(PluginDescriptor.class);
+                    if (!allowAlwaysOn && descriptor != null && descriptor.alwaysOn()) {
+                        throw new PluginInstantiationException(
+                                "Side-loaded plugins cannot be always-on: " + clazz.getSimpleName());
+                    }
                     plugins.add(clazz);
                 } catch (ClassNotFoundException e) {
                     log.trace("Class not found during sideloading: {}", classInfo.getName(), e);
-                } catch(Throwable t) {
-                    log.error("Incompatible plugin found: " + internalName);
+                } catch (NoClassDefFoundError e) {
+                    log.trace("Dependency not found during sideloading: {}", classInfo.getName(), e);
                 }
             }
-            loadPlugins(plugins, null);
+            newPlugins = loadPlugins(plugins, null);
+            if (newPlugins.isEmpty()) {
+                throw new PluginInstantiationException("No compatible plugin found in " + pluginFile.getName());
+            }
+
+            SideLoadedPluginDeployment deployment = new SideLoadedPluginDeployment(
+                    internalName, pluginFile, runtimeJar, classLoader, newPlugins);
+            deployments.put(internalName, deployment);
+            return deployment;
+        } catch (ThreadDeath e) {
+            throw e;
         } catch (PluginInstantiationException | IOException e) {
-            log.trace("Error loading side-loaded plugin!", e);
+            discardPlugins(newPlugins);
+            closeClassLoader(classLoader, internalName);
+            deleteRuntimeJar(runtimeJar);
+            throw e;
+        } catch (Throwable e) {
+            discardPlugins(newPlugins);
+            closeClassLoader(classLoader, internalName);
+            deleteRuntimeJar(runtimeJar);
+            throw new PluginInstantiationException(e);
         }
     }
 
@@ -362,30 +409,258 @@ public class MicrobotPluginManager {
             log.warn("Safe mode is enabled, skipping loading of sideloaded plugins.");
             return;
         }
-        File[] files = createSideloadingFolder();
-        if (files == null) {
-            return;
-        }
-        Set<String> loadedInternalNames = pluginManager.getPlugins().stream()
-                .filter(p -> p.getClass().isAnnotationPresent(PluginDescriptor.class))
-                .filter(p -> p.getClass().getAnnotation(PluginDescriptor.class).isExternal())
-                .map(p -> p.getClass().getSimpleName())
-                .collect(Collectors.toSet());
-        for (File f : files) {
-            if (!f.getName().endsWith(".jar")) {
-                continue;
-            }
-            String internalName = f.getName().replace(".jar", "");
-            if (loadedInternalNames.contains(internalName)) {
-                continue;
-            }
-            try {
-                loadSideLoadPlugin(internalName);
-            } catch (Exception exception) {
-                System.out.println("Error loading side-loaded plugin: " + internalName);
+        synchronized (sideLoadLock) {
+            File[] files = listSideLoadJars();
+            for (File file : files) {
+                String internalName = getInternalName(file);
+                if (deployments.containsKey(internalName)) {
+                    continue;
+                }
+                try {
+                    loadSideLoadPlugin(internalName);
+                } catch (PluginInstantiationException | IOException exception) {
+                    log.warn("Unable to load side-loaded plugin {}: {}", internalName, exception.getMessage());
+                }
             }
         }
         eventBus.post(new ExternalPluginsChanged());
+    }
+
+    /**
+     * Reloads every JAR in the Microbot side-load directory. Reloaded plugins remain disabled.
+     */
+    public CompletableFuture<SideLoadRefreshResult> refreshSideLoadedPlugins() {
+        CompletableFuture<SideLoadRefreshResult> future = new CompletableFuture<>();
+        if (safeMode) {
+            future.complete(SideLoadRefreshResult.failed("Safe mode is enabled"));
+            return future;
+        }
+        if (isShuttingDown.get()) {
+            future.complete(SideLoadRefreshResult.failed("The client is shutting down"));
+            return future;
+        }
+        if (!sideLoadRefreshInProgress.compareAndSet(false, true)) {
+            future.complete(SideLoadRefreshResult.failed("A script refresh is already running"));
+            return future;
+        }
+
+        Runnable refreshTask = () -> {
+            try {
+                SideLoadRefreshResult result;
+                synchronized (sideLoadLock) {
+                    result = refreshSideLoadedPluginsNow();
+                }
+                eventBus.post(new ExternalPluginsChanged());
+                future.complete(result);
+            } catch (ThreadDeath e) {
+                throw e;
+            } catch (Throwable e) {
+                log.warn("Unable to refresh side-loaded plugins", e);
+                try {
+                    eventBus.post(new ExternalPluginsChanged());
+                } catch (RuntimeException eventError) {
+                    log.debug("Unable to notify the UI after script refresh failure", eventError);
+                }
+                future.completeExceptionally(e);
+            } finally {
+                sideLoadRefreshInProgress.set(false);
+            }
+        };
+        try {
+            executor.execute(refreshTask);
+        } catch (RuntimeException e) {
+            sideLoadRefreshInProgress.set(false);
+            future.completeExceptionally(e);
+        }
+        return future;
+    }
+
+    private SideLoadRefreshResult refreshSideLoadedPluginsNow() {
+        SideLoadRefreshResult result = new SideLoadRefreshResult();
+        Set<String> failedUnloads = new HashSet<>();
+        List<SideLoadedPluginDeployment> currentDeployments = new ArrayList<>(deployments.values());
+
+        for (SideLoadedPluginDeployment deployment : currentDeployments) {
+            List<String> unloadErrors = unloadDeployment(deployment, true);
+            result.unloaded++;
+            if (!unloadErrors.isEmpty()) {
+                failedUnloads.add(deployment.getInternalName());
+                reloadBlockedInternalNames.add(deployment.getInternalName());
+                result.failures.put(deployment.getInternalName(), String.join("; ", unloadErrors));
+            }
+        }
+
+        for (File file : listSideLoadJars()) {
+            String internalName = getInternalName(file);
+            if (failedUnloads.contains(internalName) || reloadBlockedInternalNames.contains(internalName)) {
+                result.failures.putIfAbsent(internalName, "Restart required before this plugin can be loaded again");
+                continue;
+            }
+
+            SideLoadedPluginDeployment deployment = null;
+            try {
+                deployment = loadSideLoadPlugin(internalName, false);
+                pluginManager.loadDefaultPluginConfiguration(deployment.getPlugins());
+                disablePlugins(deployment.getPlugins());
+                result.loaded++;
+            } catch (PluginInstantiationException | IOException e) {
+                if (deployment != null) {
+                    List<String> cleanupErrors = unloadDeployment(deployment, true);
+                    if (!cleanupErrors.isEmpty()) {
+                        reloadBlockedInternalNames.add(internalName);
+                        result.failures.put(
+                                internalName,
+                                e.getMessage() + "; cleanup failed: " + String.join("; ", cleanupErrors));
+                        continue;
+                    }
+                }
+                result.failures.put(internalName, e.getMessage());
+                log.warn("Unable to reload side-loaded plugin {}: {}", internalName, e.getMessage());
+            }
+        }
+        return result;
+    }
+
+    private File[] listSideLoadJars() {
+        File[] files = createSideloadingFolder();
+        if (files == null) {
+            return new File[0];
+        }
+        return Arrays.stream(files)
+                .filter(File::isFile)
+                .filter(file -> file.getName().endsWith(".jar"))
+                .sorted(Comparator.comparing(File::getName, String.CASE_INSENSITIVE_ORDER))
+                .toArray(File[]::new);
+    }
+
+    private static String getInternalName(File pluginFile) {
+        String name = pluginFile.getName();
+        return name.substring(0, name.length() - ".jar".length());
+    }
+
+    private File createRuntimeJarCopy(File sourceJar) throws IOException {
+        java.nio.file.Files.createDirectories(RUNTIME_PLUGIN_DIR.toPath());
+        java.nio.file.Path runtimeJar = java.nio.file.Files.createTempFile(
+                RUNTIME_PLUGIN_DIR.toPath(), "microbot-plugin-", ".jar");
+        try {
+            java.nio.file.Files.copy(
+                    sourceJar.toPath(), runtimeJar, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            return runtimeJar.toFile();
+        } catch (IOException e) {
+            java.nio.file.Files.deleteIfExists(runtimeJar);
+            throw e;
+        }
+    }
+
+    private List<String> unloadDeployment(SideLoadedPluginDeployment deployment, boolean disableConfiguration) {
+        List<String> errors = new ArrayList<>();
+        Runnable stopPlugins = () -> {
+            for (Plugin plugin : deployment.getPlugins()) {
+                if (disableConfiguration) {
+                    try {
+                        pluginManager.setPluginEnabled(plugin, false);
+                    } catch (RuntimeException e) {
+                        errors.add("Failed to disable " + plugin.getClass().getSimpleName());
+                        log.warn("Unable to disable side-loaded plugin {}", plugin.getClass().getSimpleName(), e);
+                    }
+                }
+                try {
+                    if (pluginManager.isPluginActive(plugin)) {
+                        pluginManager.stopPlugin(plugin);
+                    }
+                } catch (Exception e) {
+                    errors.add("Failed to stop " + plugin.getClass().getSimpleName());
+                    log.warn("Unable to stop side-loaded plugin {}", plugin.getClass().getSimpleName(), e);
+                }
+            }
+        };
+
+        try {
+            runOnEdtAndWait(stopPlugins);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            errors.add("Interrupted while stopping plugins");
+        } catch (InvocationTargetException e) {
+            errors.add("Failed to stop plugins on the UI thread");
+            log.warn("Unable to stop deployment {}", deployment.getInternalName(), e.getCause());
+        }
+
+        List<String> unterminatedScripts = ScriptLifecycleRegistry.disposeScripts(
+                deployment.getClassLoader(), SCRIPT_DISPOSE_TIMEOUT_MILLIS);
+        if (!unterminatedScripts.isEmpty()) {
+            errors.add("Script threads did not stop: " + String.join(", ", unterminatedScripts));
+        }
+
+        deployment.getPlugins().forEach(pluginManager::remove);
+        deployments.remove(deployment.getInternalName(), deployment);
+        if (!closeClassLoader(deployment.getClassLoader(), deployment.getInternalName())) {
+            errors.add("Failed to close plugin class loader");
+        }
+        deleteRuntimeJar(deployment.getRuntimeJar());
+        return errors;
+    }
+
+    private void disablePlugins(List<Plugin> plugins) throws PluginInstantiationException {
+        try {
+            runOnEdtAndWait(() -> plugins.forEach(plugin -> pluginManager.setPluginEnabled(plugin, false)));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new PluginInstantiationException("Interrupted while disabling reloaded plugins");
+        } catch (InvocationTargetException e) {
+            throw new PluginInstantiationException(e.getCause());
+        }
+    }
+
+    private void discardPlugins(List<Plugin> plugins) {
+        for (Plugin plugin : plugins) {
+            pluginManager.remove(plugin);
+        }
+    }
+
+    private static void runOnEdtAndWait(Runnable runnable)
+            throws InterruptedException, InvocationTargetException {
+        if (SwingUtilities.isEventDispatchThread()) {
+            runnable.run();
+        } else {
+            SwingUtilities.invokeAndWait(runnable);
+        }
+    }
+
+    private boolean closeClassLoader(PluginJarClassLoader classLoader, String internalName) {
+        if (classLoader == null) {
+            return true;
+        }
+        try {
+            classLoader.close();
+            return true;
+        } catch (IOException e) {
+            log.warn("Unable to close class loader for {}", internalName, e);
+            return false;
+        }
+    }
+
+    private void deleteRuntimeJar(File runtimeJar) {
+        if (runtimeJar == null || !runtimeJar.exists()) {
+            return;
+        }
+        try {
+            java.nio.file.Files.deleteIfExists(runtimeJar.toPath());
+        } catch (IOException e) {
+            log.debug("Unable to delete runtime plugin copy {}", runtimeJar.getName(), e);
+        }
+    }
+
+    private void cleanupStaleRuntimeJars() {
+        File[] staleRuntimeJars = RUNTIME_PLUGIN_DIR.listFiles(file ->
+                file.isFile()
+                        && file.getName().endsWith(".jar")
+                        && file.lastModified() < Instant.now().minus(3, ChronoUnit.DAYS).toEpochMilli());
+        if (staleRuntimeJars == null) {
+            return;
+        }
+        for (File staleRuntimeJar : staleRuntimeJars) {
+            deleteRuntimeJar(staleRuntimeJar);
+        }
     }
 
     /**
@@ -560,14 +835,10 @@ public class MicrobotPluginManager {
                 log.error("Error while loading plugin {}: {}", clazz.getSimpleName(), e.toString(), e);
             }
 
-            File jar = getPluginJarFile(plugin.getClass().getSimpleName());
-            if (jar != null) {
-                jar.delete();
-            }
+            throw new PluginInstantiationException(e);
         } catch (Exception ex) {
-            log.error("Incompatible plugin found: " + clazz.getSimpleName());
-            File jar = getPluginJarFile(plugin.getClass().getSimpleName());
-            jar.delete();
+            log.error("Incompatible plugin found: {}", clazz.getSimpleName(), ex);
+            throw new PluginInstantiationException(ex);
         }
 
         log.debug("Loaded plugin {}", clazz.getSimpleName());
@@ -1032,11 +1303,16 @@ public class MicrobotPluginManager {
             return;
         }
 
-        var result = downloadPlugin(internalName, versionOverride);
-        if (result) {
-            //verifiy hash inside loadSidePlugin doesn't work
-            loadSideLoadPlugin(internalName);
-            sendPluginInstallTelemetry(manifest, versionOverride);
+        synchronized (sideLoadLock) {
+            boolean downloaded = downloadPlugin(internalName, versionOverride);
+            if (downloaded) {
+                try {
+                    loadSideLoadPlugin(internalName);
+                    sendPluginInstallTelemetry(manifest, versionOverride);
+                } catch (PluginInstantiationException | IOException e) {
+                    log.warn("Unable to load installed plugin {}: {}", internalName, e.getMessage());
+                }
+            }
         }
 
         log.info("Added plugin {} to installed list", manifest.getDisplayName());
@@ -1067,40 +1343,24 @@ public class MicrobotPluginManager {
             return;
         }
 
-        File jar = getPluginJarFile(internalName);
-        var pluginToRemove = pluginManager.getPlugins().stream().filter(x -> x.getClass().getSimpleName().equalsIgnoreCase(internalName)).findFirst();
-        if (pluginToRemove.isPresent()) {
-            URLClassLoader cl = loaders.remove(internalName);
-            if (cl == null) return;
-
-            var plugin = pluginToRemove.get();
-            try {
-                SwingUtilities.invokeAndWait(() ->
-                {
-                    try {
-                        pluginManager.stopPlugin(plugin);
-                    } catch (Exception e) {
-                        throw new RuntimeException(e);
-                    }
-                });
-            } catch (InterruptedException | InvocationTargetException e) {
-                throw new RuntimeException(e);
+        synchronized (sideLoadLock) {
+            File jar = getPluginJarFile(internalName);
+            SideLoadedPluginDeployment deployment = deployments.get(internalName);
+            if (deployment != null) {
+                List<String> errors = unloadDeployment(deployment, false);
+                if (!errors.isEmpty()) {
+                    reloadBlockedInternalNames.add(internalName);
+                    log.warn("Plugin {} was removed with cleanup errors: {}", internalName, errors);
+                }
+            } else {
+                log.warn("Plugin deployment to remove not found: {}", internalName);
             }
 
-            pluginManager.remove(plugin);
-
-            try {
-                cl.close();
-            } catch (Exception ignored) {
+            if (jar.exists() && !jar.delete()) {
+                log.warn("Failed to delete plugin jar {}", jar.getAbsolutePath());
             }
-        } else {
-            log.warn("Plugin to remove not found in plugin manager: {}", internalName);
+            clearInstalledPluginVersion(internalName);
         }
-
-        if (jar.exists() && !jar.delete()) {
-            log.warn("Failed to delete plugin jar {}", jar.getAbsolutePath());
-        }
-        clearInstalledPluginVersion(internalName);
 
         log.info("Removed plugin {} from installed list", manifest.getDisplayName());
         eventBus.post(new ExternalPluginsChanged());
@@ -1210,15 +1470,14 @@ public class MicrobotPluginManager {
         log.info("Shutting down MicrobotPluginManager");
 
         try {
-            List<Plugin> externalPlugins = pluginManager.getPlugins().stream()
-                    .filter(plugin -> {
-                        PluginDescriptor descriptor = plugin.getClass().getAnnotation(PluginDescriptor.class);
-                        return descriptor != null && descriptor.isExternal();
-                    })
-                    .collect(Collectors.toList());
-
-            for (Plugin plugin : externalPlugins) {
-                stopPlugin(plugin);
+            synchronized (sideLoadLock) {
+                for (SideLoadedPluginDeployment deployment : new ArrayList<>(deployments.values())) {
+                    List<String> errors = unloadDeployment(deployment, false);
+                    if (!errors.isEmpty()) {
+                        log.warn("Plugin {} shutdown completed with cleanup errors: {}",
+                                deployment.getInternalName(), errors);
+                    }
+                }
             }
 
             log.info("MicrobotPluginManager shutdown complete");
@@ -1331,6 +1590,40 @@ public class MicrobotPluginManager {
 
         public String getSha256() {
             return sha256;
+        }
+    }
+
+    public static final class SideLoadRefreshResult {
+        private int unloaded;
+        private int loaded;
+        private final Map<String, String> failures = new LinkedHashMap<>();
+
+        private static SideLoadRefreshResult failed(String message) {
+            SideLoadRefreshResult result = new SideLoadRefreshResult();
+            result.failures.put("Refresh", message);
+            return result;
+        }
+
+        public int getUnloaded() {
+            return unloaded;
+        }
+
+        public int getLoaded() {
+            return loaded;
+        }
+
+        public Map<String, String> getFailures() {
+            return Collections.unmodifiableMap(failures);
+        }
+
+        public boolean isSuccessful() {
+            return failures.isEmpty();
+        }
+
+        public String getSummary() {
+            return String.format(
+                    "Reloaded %d script JAR(s), unloaded %d, failed %d",
+                    loaded, unloaded, failures.size());
         }
     }
 
