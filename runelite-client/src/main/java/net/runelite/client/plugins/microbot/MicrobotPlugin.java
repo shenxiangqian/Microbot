@@ -20,6 +20,7 @@ import net.runelite.client.plugins.microbot.pouch.PouchOverlay;
 import net.runelite.client.plugins.microbot.ui.MicrobotPluginConfigurationDescriptor;
 import net.runelite.client.plugins.microbot.ui.MicrobotPluginListPanel;
 import net.runelite.client.plugins.microbot.ui.MicrobotTopLevelConfigPanel;
+import net.runelite.client.plugins.microbot.ui.ScriptToolbarController;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
 import net.runelite.client.plugins.microbot.util.huntkit.Rs2HuntKit;
@@ -96,6 +97,9 @@ public class MicrobotPlugin extends Plugin
 
 	@Inject
 	private MicrobotConfig microbotConfig;
+
+	@Inject
+	private ScriptToolbarController scriptToolbarController;
 
 	private MicrobotTopLevelConfigPanel topLevelConfigPanel;
 
@@ -187,8 +191,7 @@ public class MicrobotPlugin extends Plugin
 			.build();
 
 		clientToolbar.addNavigation(navButton);
-
-		new InputSelector(clientToolbar);
+		scriptToolbarController.startUp(navButton);
 
 		Microbot.getPouchScript().startUp();
 
@@ -205,6 +208,7 @@ public class MicrobotPlugin extends Plugin
 
 	protected void shutDown()
 	{
+		scriptToolbarController.shutDown();
 		overlayManager.remove(microbotOverlay);
 		overlayManager.remove(gembagOverlay);
 		overlayManager.remove(pouchOverlay);

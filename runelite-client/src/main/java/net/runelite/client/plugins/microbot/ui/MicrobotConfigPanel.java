@@ -37,6 +37,7 @@ import net.runelite.client.events.PluginChanged;
 import net.runelite.client.events.ProfileChanged;
 import net.runelite.client.externalplugins.ExternalPluginManager;
 import net.runelite.client.plugins.Plugin;
+import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.plugins.microbot.MicrobotConfigManager;
 import net.runelite.client.plugins.microbot.breakhandler.breakhandlerv2.BreakHandlerV2Config;
@@ -250,16 +251,21 @@ class MicrobotConfigPanel extends MicrobotPluginPanel {
         MicrobotPluginListItem.addLabelPopupMenu(title, pluginConfig.createSupportMenuItem(pluginConfig.getPlugin()), uninstallItem);
 
         if (pluginConfig.getPlugin() != null) {
-            pluginToggle.setConflicts(pluginConfig.getConflicts());
-            pluginToggle.setSelected(pluginManager.isPluginEnabled(pluginConfig.getPlugin()));
-            pluginToggle.addItemListener(i ->
-            {
-                if (pluginToggle.isSelected()) {
-                    pluginList.startPlugin(pluginConfig.getPlugin());
-                } else {
-                    pluginList.stopPlugin(pluginConfig.getPlugin());
-                }
-            });
+            PluginDescriptor descriptor = pluginConfig.getPlugin().getClass().getAnnotation(PluginDescriptor.class);
+            boolean externalScript = descriptor != null && descriptor.isExternal();
+            pluginToggle.setVisible(!externalScript);
+            if (!externalScript) {
+                pluginToggle.setConflicts(pluginConfig.getConflicts());
+                pluginToggle.setSelected(pluginManager.isPluginEnabled(pluginConfig.getPlugin()));
+                pluginToggle.addItemListener(i ->
+                {
+                    if (pluginToggle.isSelected()) {
+                        pluginList.startPlugin(pluginConfig.getPlugin());
+                    } else {
+                        pluginList.stopPlugin(pluginConfig.getPlugin());
+                    }
+                });
+            }
         } else {
             pluginToggle.setVisible(false);
         }

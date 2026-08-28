@@ -46,6 +46,7 @@ import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ClientShutdown;
 import net.runelite.client.events.ExternalPluginsChanged;
+import net.runelite.client.events.PluginChanged;
 import net.runelite.client.plugins.*;
 import net.runelite.client.plugins.microbot.MicrobotApi;
 import net.runelite.client.plugins.microbot.Microbot;
@@ -80,6 +81,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Predicate;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -105,6 +107,7 @@ public class MicrobotPluginManager {
     private final Map<String, SideLoadedPluginDeployment> deployments = new ConcurrentHashMap<>();
     private final Set<String> reloadBlockedInternalNames = ConcurrentHashMap.newKeySet();
     private final Object sideLoadLock = new Object();
+    private volatile SideLoadedScriptReference lastStartedSideLoadedScript;
 
     @Inject
     @Named("safeMode")
@@ -424,6 +427,317 @@ public class MicrobotPluginManager {
             }
         }
         eventBus.post(new ExternalPluginsChanged());
+    }
+
+    /**
+     * Returns launchable external plugins owned by this side-load manager.
+     */
+    public List<SideLoadedScript> getSideLoadedScripts() {
+        return deployments.values().stream()
+                .flatMap(deployment -> deployment.getPlugins().stream()
+                        .filter(MicrobotPluginManager::isLaunchableSideLoadedScript)
+                        .map(plugin -> toSideLoadedScript(deployment, plugin)))
+                .sorted(Comparator.comparing(SideLoadedScript::getDisplayName, String.CASE_INSENSITIVE_ORDER))
+                .collect(Collectors.toList());
+    }
+
+    public List<SideLoadedScript> getActiveSideLoadedScripts() {
+        return getSideLoadedScripts().stream()
+                .filter(SideLoadedScript::isActive)
+                .collect(Collectors.toList());
+    }
+
+    public Optional<SideLoadedScriptReference> getLastStartedSideLoadedScript() {
+        return Optional.ofNullable(lastStartedSideLoadedScript);
+    }
+
+    @Subscribe
+    public void onPluginChanged(PluginChanged event) {
+        if (!event.isLoaded() || !isLaunchableSideLoadedScript(event.getPlugin())) {
+            return;
+        }
+
+        deployments.values().stream()
+                .filter(deployment -> deployment.getPlugins().stream()
+                        .anyMatch(plugin -> plugin == event.getPlugin()))
+                .findFirst()
+                .ifPresent(deployment -> lastStartedSideLoadedScript = new SideLoadedScriptReference(
+                        deployment.getInternalName(),
+                        event.getPlugin().getClass().getName()));
+    }
+
+    public boolean isManagedSideLoadedPlugin(Plugin plugin) {
+        return deployments.values().stream()
+                .anyMatch(deployment -> deployment.getPlugins().stream().anyMatch(candidate -> candidate == plugin));
+    }
+
+    public CompletableFuture<SideLoadedScriptOperationResult> startSideLoadedScript(
+            String internalName,
+            String className) {
+        return executeSideLoadedScriptOperation(
+                () -> startSideLoadedScriptNow(internalName, className), false);
+    }
+
+    public CompletableFuture<SideLoadedScriptOperationResult> startSideLoadedScriptByName(String scriptName) {
+        return executeSideLoadedScriptOperation(
+                () -> startSideLoadedScriptByNameNow(scriptName), false);
+    }
+
+    public CompletableFuture<SideLoadedScriptOperationResult> stopActiveSideLoadedScripts() {
+        return executeSideLoadedScriptOperation(this::stopActiveSideLoadedScriptsNow, false);
+    }
+
+    public CompletableFuture<SideLoadedScriptOperationResult> restartSideLoadedScript(
+            String internalName,
+            String className) {
+        return executeSideLoadedScriptOperation(
+                () -> restartSideLoadedScriptNow(internalName, className), true);
+    }
+
+    private CompletableFuture<SideLoadedScriptOperationResult> executeSideLoadedScriptOperation(
+            Supplier<SideLoadedScriptOperationResult> operation,
+            boolean notifyExternalPluginsChanged) {
+        CompletableFuture<SideLoadedScriptOperationResult> future = new CompletableFuture<>();
+        if (safeMode) {
+            future.complete(SideLoadedScriptOperationResult.failed("Safe mode is enabled"));
+            return future;
+        }
+        if (isShuttingDown.get()) {
+            future.complete(SideLoadedScriptOperationResult.failed("The client is shutting down"));
+            return future;
+        }
+
+        try {
+            executor.execute(() -> {
+                try {
+                    SideLoadedScriptOperationResult result;
+                    synchronized (sideLoadLock) {
+                        result = operation.get();
+                    }
+                    if (notifyExternalPluginsChanged) {
+                        eventBus.post(new ExternalPluginsChanged());
+                    }
+                    future.complete(result);
+                } catch (ThreadDeath e) {
+                    throw e;
+                } catch (Throwable e) {
+                    log.warn("Unable to complete side-loaded script operation", e);
+                    future.completeExceptionally(e);
+                }
+            });
+        } catch (RuntimeException e) {
+            future.completeExceptionally(e);
+        }
+        return future;
+    }
+
+    private SideLoadedScriptOperationResult startSideLoadedScriptNow(String internalName, String className) {
+        SideLoadedPluginDeployment deployment = deployments.get(internalName);
+        Plugin plugin = findDeploymentPlugin(deployment, className);
+        if (plugin == null || !isLaunchableSideLoadedScript(plugin)) {
+            return SideLoadedScriptOperationResult.failed("The selected script is no longer loaded");
+        }
+
+        List<SideLoadedScript> activeScripts = getActiveSideLoadedScripts();
+        boolean anotherScriptActive = activeScripts.stream()
+                .anyMatch(script -> !script.matches(internalName, className));
+        if (anotherScriptActive) {
+            return SideLoadedScriptOperationResult.failed("Stop the currently running script before starting another one");
+        }
+
+        return startPluginInstance(deployment, plugin);
+    }
+
+    private SideLoadedScriptOperationResult startSideLoadedScriptByNameNow(String scriptName) {
+        String requestedName = Strings.nullToEmpty(scriptName).trim();
+        if (requestedName.isEmpty()) {
+            return SideLoadedScriptOperationResult.failed("Script name must not be blank");
+        }
+
+        List<SideLoadedScript> matches = getSideLoadedScripts().stream()
+                .filter(script -> script.matchesName(requestedName))
+                .collect(Collectors.toList());
+        if (matches.isEmpty()) {
+            return SideLoadedScriptOperationResult.failed(
+                    "No external script matching '" + requestedName + "' is loaded");
+        }
+        if (matches.size() > 1) {
+            String matchNames = matches.stream()
+                    .map(script -> script.getDisplayName() + " [" + script.getInternalName() + "]")
+                    .collect(Collectors.joining(", "));
+            return SideLoadedScriptOperationResult.failed(
+                    "Multiple external scripts match '" + requestedName + "': " + matchNames);
+        }
+
+        SideLoadedScript selected = matches.get(0);
+        SideLoadedScriptOperationResult stopResult = stopActiveSideLoadedScriptsNow();
+        if (!stopResult.isSuccessful()) {
+            return stopResult;
+        }
+        return startSideLoadedScriptNow(selected.getInternalName(), selected.getClassName());
+    }
+
+    private SideLoadedScriptOperationResult stopActiveSideLoadedScriptsNow() {
+        List<Plugin> activePlugins = deployments.values().stream()
+                .flatMap(deployment -> deployment.getPlugins().stream())
+                .filter(MicrobotPluginManager::isLaunchableSideLoadedScript)
+                .filter(pluginManager::isPluginActive)
+                .collect(Collectors.toList());
+        if (activePlugins.isEmpty()) {
+            return SideLoadedScriptOperationResult.succeeded("No external script is running", null);
+        }
+
+        List<String> errors = new ArrayList<>();
+        try {
+            runOnEdtAndWait(() -> {
+                for (Plugin plugin : activePlugins) {
+                    try {
+                        pluginManager.setPluginEnabled(plugin, false);
+                    } catch (RuntimeException e) {
+                        errors.add("Failed to disable " + plugin.getClass().getSimpleName());
+                        log.warn("Unable to disable side-loaded script {}", plugin.getClass().getSimpleName(), e);
+                    }
+                    try {
+                        if (pluginManager.isPluginActive(plugin)) {
+                            pluginManager.stopPlugin(plugin);
+                        }
+                    } catch (Exception e) {
+                        errors.add("Failed to stop " + plugin.getClass().getSimpleName());
+                        log.warn("Unable to stop side-loaded script {}", plugin.getClass().getSimpleName(), e);
+                    }
+                }
+            });
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return SideLoadedScriptOperationResult.failed("Interrupted while stopping external scripts");
+        } catch (InvocationTargetException e) {
+            return SideLoadedScriptOperationResult.failed("Unable to stop external scripts on the UI thread");
+        }
+
+        if (!errors.isEmpty()) {
+            return SideLoadedScriptOperationResult.failed(String.join("; ", errors));
+        }
+        return SideLoadedScriptOperationResult.succeeded(
+                "Stopped " + activePlugins.size() + " external script(s)", null);
+    }
+
+    private SideLoadedScriptOperationResult restartSideLoadedScriptNow(String internalName, String className) {
+        SideLoadedPluginDeployment deployment = deployments.get(internalName);
+        boolean anotherScriptActive = getActiveSideLoadedScripts().stream()
+                .anyMatch(script -> !script.matches(internalName, className));
+        if (anotherScriptActive) {
+            return SideLoadedScriptOperationResult.failed(
+                    "Stop the currently running script before restarting the last script");
+        }
+
+        if (deployment != null) {
+            List<String> unloadErrors = unloadDeployment(deployment, true);
+            if (!unloadErrors.isEmpty()) {
+                reloadBlockedInternalNames.add(internalName);
+                return SideLoadedScriptOperationResult.failed(String.join("; ", unloadErrors));
+            }
+        }
+
+        SideLoadedPluginDeployment replacement = null;
+        try {
+            replacement = loadSideLoadPlugin(internalName, false);
+            pluginManager.loadDefaultPluginConfiguration(replacement.getPlugins());
+            disablePlugins(replacement.getPlugins());
+        } catch (PluginInstantiationException | IOException e) {
+            if (replacement != null) {
+                List<String> cleanupErrors = unloadDeployment(replacement, true);
+                if (!cleanupErrors.isEmpty()) {
+                    reloadBlockedInternalNames.add(internalName);
+                }
+            }
+            return SideLoadedScriptOperationResult.failed(messageOrClassName(e));
+        }
+
+        Plugin reloadedPlugin = findDeploymentPlugin(replacement, className);
+        if (reloadedPlugin == null || !isLaunchableSideLoadedScript(reloadedPlugin)) {
+            List<String> cleanupErrors = unloadDeployment(replacement, true);
+            if (!cleanupErrors.isEmpty()) {
+                reloadBlockedInternalNames.add(internalName);
+            }
+            return SideLoadedScriptOperationResult.failed("The reloaded JAR no longer contains the selected script");
+        }
+        return startPluginInstance(replacement, reloadedPlugin);
+    }
+
+    private SideLoadedScriptOperationResult startPluginInstance(
+            SideLoadedPluginDeployment deployment,
+            Plugin plugin) {
+        try {
+            runOnEdtAndWait(() -> {
+                pluginManager.setPluginEnabled(plugin, true);
+                try {
+                    pluginManager.startPlugin(plugin);
+                } catch (PluginInstantiationException e) {
+                    pluginManager.setPluginEnabled(plugin, false);
+                    throw new IllegalStateException(e);
+                }
+            });
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return SideLoadedScriptOperationResult.failed("Interrupted while starting the script");
+        } catch (InvocationTargetException e) {
+            return SideLoadedScriptOperationResult.failed(messageOrClassName(e.getCause()));
+        }
+
+        if (!pluginManager.isPluginActive(plugin)) {
+            pluginManager.setPluginEnabled(plugin, false);
+            return SideLoadedScriptOperationResult.failed("The script did not enter the running state");
+        }
+        lastStartedSideLoadedScript = new SideLoadedScriptReference(
+                deployment.getInternalName(), plugin.getClass().getName());
+        return SideLoadedScriptOperationResult.succeeded(
+                "Started " + plugin.getName(), toSideLoadedScript(deployment, plugin));
+    }
+
+    private static Plugin findDeploymentPlugin(SideLoadedPluginDeployment deployment, String className) {
+        if (deployment == null || Strings.isNullOrEmpty(className)) {
+            return null;
+        }
+        return deployment.getPlugins().stream()
+                .filter(plugin -> plugin.getClass().getName().equals(className))
+                .findFirst()
+                .orElse(null);
+    }
+
+    @VisibleForTesting
+    static boolean isLaunchableSideLoadedScript(Plugin plugin) {
+        PluginDescriptor descriptor = plugin.getClass().getAnnotation(PluginDescriptor.class);
+        return descriptor != null
+                && descriptor.isExternal()
+                && !descriptor.hidden()
+                && !descriptor.alwaysOn()
+                && !descriptor.disable();
+    }
+
+    private SideLoadedScript toSideLoadedScript(SideLoadedPluginDeployment deployment, Plugin plugin) {
+        PluginDescriptor descriptor = plugin.getClass().getAnnotation(PluginDescriptor.class);
+        return new SideLoadedScript(
+                deployment.getInternalName(),
+                plugin.getClass().getName(),
+                descriptor.name(),
+                descriptor.description(),
+                descriptor.version(),
+                pluginManager.getPluginConfigProxy(plugin) != null,
+                pluginManager.isPluginActive(plugin),
+                plugin);
+    }
+
+    private static String messageOrClassName(Throwable throwable) {
+        if (throwable == null) {
+            return "Unknown error";
+        }
+        Throwable current = throwable;
+        while (current.getCause() != null && current.getCause() != current) {
+            current = current.getCause();
+        }
+        return Strings.isNullOrEmpty(current.getMessage())
+                ? current.getClass().getSimpleName()
+                : current.getMessage();
     }
 
     /**
@@ -1624,6 +1938,146 @@ public class MicrobotPluginManager {
             return String.format(
                     "Reloaded %d script JAR(s), unloaded %d, failed %d",
                     loaded, unloaded, failures.size());
+        }
+    }
+
+    public static final class SideLoadedScript {
+        private final String internalName;
+        private final String className;
+        private final String displayName;
+        private final String description;
+        private final String version;
+        private final boolean configurable;
+        private final boolean active;
+        private final Plugin plugin;
+
+        private SideLoadedScript(
+                String internalName,
+                String className,
+                String displayName,
+                String description,
+                String version,
+                boolean configurable,
+                boolean active,
+                Plugin plugin) {
+            this.internalName = internalName;
+            this.className = className;
+            this.displayName = displayName;
+            this.description = description;
+            this.version = version;
+            this.configurable = configurable;
+            this.active = active;
+            this.plugin = plugin;
+        }
+
+        public String getInternalName() {
+            return internalName;
+        }
+
+        public String getClassName() {
+            return className;
+        }
+
+        public String getDisplayName() {
+            return displayName;
+        }
+
+        public String getDescription() {
+            return description;
+        }
+
+        public String getVersion() {
+            return version;
+        }
+
+        public boolean isConfigurable() {
+            return configurable;
+        }
+
+        public boolean isActive() {
+            return active;
+        }
+
+        public Plugin getPlugin() {
+            return plugin;
+        }
+
+        private boolean matches(String candidateInternalName, String candidateClassName) {
+            return internalName.equals(candidateInternalName) && className.equals(candidateClassName);
+        }
+
+        private boolean matchesName(String candidateName) {
+            return matchesSideLoadedScriptName(candidateName, internalName, className, displayName);
+        }
+    }
+
+    @VisibleForTesting
+    static boolean matchesSideLoadedScriptName(
+            String candidateName,
+            String internalName,
+            String className,
+            String displayName) {
+        if (Strings.isNullOrEmpty(candidateName)) {
+            return false;
+        }
+        int simpleNameOffset = className.lastIndexOf('.') + 1;
+        String simpleClassName = className.substring(simpleNameOffset);
+        return candidateName.equalsIgnoreCase(displayName)
+                || candidateName.equalsIgnoreCase(internalName)
+                || candidateName.equalsIgnoreCase(className)
+                || candidateName.equalsIgnoreCase(simpleClassName);
+    }
+
+    public static final class SideLoadedScriptOperationResult {
+        private final boolean successful;
+        private final String message;
+        private final SideLoadedScript script;
+
+        private SideLoadedScriptOperationResult(
+                boolean successful,
+                String message,
+                SideLoadedScript script) {
+            this.successful = successful;
+            this.message = message;
+            this.script = script;
+        }
+
+        private static SideLoadedScriptOperationResult succeeded(String message, SideLoadedScript script) {
+            return new SideLoadedScriptOperationResult(true, message, script);
+        }
+
+        private static SideLoadedScriptOperationResult failed(String message) {
+            return new SideLoadedScriptOperationResult(false, message, null);
+        }
+
+        public boolean isSuccessful() {
+            return successful;
+        }
+
+        public String getMessage() {
+            return message;
+        }
+
+        public SideLoadedScript getScript() {
+            return script;
+        }
+    }
+
+    public static final class SideLoadedScriptReference {
+        private final String internalName;
+        private final String className;
+
+        private SideLoadedScriptReference(String internalName, String className) {
+            this.internalName = internalName;
+            this.className = className;
+        }
+
+        public String getInternalName() {
+            return internalName;
+        }
+
+        public String getClassName() {
+            return className;
         }
     }
 

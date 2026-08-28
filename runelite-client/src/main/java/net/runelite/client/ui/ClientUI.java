@@ -57,8 +57,6 @@ import net.runelite.client.input.MouseAdapter;
 import net.runelite.client.input.MouseListener;
 import net.runelite.client.input.MouseManager;
 import net.runelite.client.plugins.microbot.Microbot;
-import net.runelite.client.plugins.microbot.questhelper.QuestHelperConfig;
-import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 import net.runelite.client.ui.laf.RuneLiteLAF;
 import net.runelite.client.ui.laf.RuneLiteRootPaneUI;
 import net.runelite.client.util.HotkeyListener;
@@ -139,9 +137,6 @@ public class ClientUI
 	private Dimension lastClientSize;
 	private Cursor defaultCursor;
 
-	private JButton questHelperNavBtn;
-	private BufferedImage questIconOn;
-	private BufferedImage questIconOff;
 	private String lastNormalBounds;
 	private final Timer normalBoundsTimer;
 
@@ -163,6 +158,7 @@ public class ClientUI
 	private JButton consoleToggleButton;
 	private BufferedImage consoleIconOpen;
 	private BufferedImage consoleIconClosed;
+	private JDialog consoleDialog;
 	private boolean consoleVisible;
 
 	@RequiredArgsConstructor
@@ -379,8 +375,6 @@ public class ClientUI
 
 			clientPanel = new ClientPanel(client);
 			consolePanel = new LogConsolePanel();
-			clientPanel.setConsole(consolePanel);
-			clientPanel.setConsoleVisible(false);
 			consoleVisible = false;
 			initializeConsoleLogging();
 			content.add(clientPanel);
@@ -602,23 +596,6 @@ public class ClientUI
 					FlatClientProperties.TABBED_PANE_TRAILING_COMPONENT,
 					toolbarPanel.createSidebarPanel());
 			}
-
-			questIconOn = net.runelite.client.plugins.microbot.questhelper.tools.Icon.QUEST_ICON_ON.getImage();
-			questIconOff = net.runelite.client.plugins.microbot.questhelper.tools.Icon.QUEST_ICON_OFF.getImage();
-			questHelperNavBtn = toolbarPanel.add(
-				NavigationButton.builder()
-					.icon(configManager.getConfiguration(QuestHelperConfig.QUEST_HELPER_GROUP, "TurnOn", Boolean.class) ? questIconOn : questIconOff)
-					.tooltip(configManager.getConfiguration(QuestHelperConfig.QUEST_HELPER_GROUP, "TurnOn", Boolean.class) ? "Disable 'Semi-Auto' Questing" : "Enable 'Semi-Auto' Questing")
-					.onClick(() ->
-					{
-						boolean isEnabled = configManager.getConfiguration(QuestHelperConfig.QUEST_HELPER_GROUP, "TurnOn", Boolean.class);
-						configManager.setConfiguration(QuestHelperConfig.QUEST_HELPER_GROUP, "TurnOn", !isEnabled);
-						questHelperNavBtn.setIcon(new ImageIcon(!isEnabled ? questIconOn : questIconOff ));
-						questHelperNavBtn.setToolTipText(!isEnabled ? "Disable 'Semi-Auto' Questing" : "Enable 'Semi-Auto' Questing");
-						if (isEnabled) Rs2Walker.clearWalkingRoute("client-ui:quest-helper-toggle-disable");
-					})
-					.build(), false
-			);
 
 			// Update config
 			updateFrameConfig(false);
@@ -1174,25 +1151,51 @@ public class ClientUI
 
 	private void setConsoleVisible(boolean visible)
 	{
-		if (consolePanel == null || clientPanel == null || consoleVisible == visible)
+		if (consolePanel == null || consoleVisible == visible)
 		{
+			if (visible && consoleDialog != null)
+			{
+				consoleDialog.toFront();
+			}
 			return;
 		}
 
 		consoleVisible = visible;
-		clientPanel.setConsoleVisible(visible);
+		if (visible)
+		{
+			ensureConsoleDialog();
+			consoleDialog.setVisible(true);
+			consoleDialog.toFront();
+		}
+		else if (consoleDialog != null)
+		{
+			consoleDialog.setVisible(false);
+		}
 		updateConsoleToggleButton();
+	}
 
-		if (content != null)
+	private void ensureConsoleDialog()
+	{
+		if (consoleDialog != null)
 		{
-			content.revalidate();
-			content.repaint();
+			return;
 		}
 
-		if (frame != null)
+		consoleDialog = new JDialog(frame, "Client Console", Dialog.ModalityType.MODELESS);
+		consoleDialog.setDefaultCloseOperation(WindowConstants.HIDE_ON_CLOSE);
+		consoleDialog.setContentPane(consolePanel);
+		consoleDialog.setMinimumSize(new Dimension(600, 300));
+		consoleDialog.setSize(new Dimension(900, 500));
+		consoleDialog.setLocationRelativeTo(frame);
+		consoleDialog.addWindowListener(new WindowAdapter()
 		{
-			frame.revalidateMinimumSize();
-		}
+			@Override
+			public void windowClosing(WindowEvent event)
+			{
+				consoleVisible = false;
+				updateConsoleToggleButton();
+			}
+		});
 	}
 
 	private void updateConsoleToggleButton()

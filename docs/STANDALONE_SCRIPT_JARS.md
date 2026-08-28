@@ -356,6 +356,15 @@ so the source JAR can be overwritten while the client is running. If a script
 does not release its executor threads during unload, that plugin is blocked
 from loading again until the client restarts.
 
+Plugins marked `isExternal = true` are launched from the play button in the
+client title bar. The selection dialog lists only external plugins owned by the
+Microbot side-load manager; native Microbot plugins remain in the Installed
+sidebar. While one external script is running, the play button is replaced by
+stop and restart controls. Restart unloads only the selected script JAR, loads
+the current source JAR, and starts the matching plugin class again. The client
+remembers the most recently started external script for the current session, so
+the restart control remains available after that script is stopped manually.
+
 ---
 
 ## 7. Updating / Removing

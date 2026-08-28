@@ -68,7 +68,6 @@ import java.util.Comparator;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -258,35 +257,12 @@ public class MicrobotPluginListPanel extends MicrobotPluginPanel {
     public void rebuildPluginList() {
         List<String> pinnedPlugins = getPinnedPluginNames();
 
-        Predicate<Plugin> isMicrobotPlugin = plugin ->
-                plugin.getClass().getPackage().getName().toLowerCase().contains("microbot");
-
-        // populate pluginList with all non-hidden plugins
+        // External JAR scripts are launched from the title-bar script selector.
         pluginList = Stream.concat(
                         fakePlugins.stream(),
                         pluginManager.getPlugins().stream()
-                                .filter(plugin -> {
-                                    PluginDescriptor d = plugin.getClass().getAnnotation(PluginDescriptor.class);
-                                    return !d.hidden() && (isMicrobotPlugin.test(plugin) || d.isExternal());
-                                })
-                                .map(plugin ->
-                                {
-                                    PluginDescriptor descriptor = plugin.getClass().getAnnotation(PluginDescriptor.class);
-                                    Config config = pluginManager.getPluginConfigProxy(plugin);
-                                    ConfigDescriptor configDescriptor = config == null ? null : configManager.getConfigDescriptor(config);
-                                    List<String> conflicts = pluginManager.conflictsForPlugin(plugin).stream()
-                                            .map(Plugin::getName)
-                                            .collect(Collectors.toList());
-
-                                    return new MicrobotPluginConfigurationDescriptor(
-                                            descriptor.name(),
-                                            descriptor.description(),
-                                            descriptor.tags(),
-                                            plugin,
-                                            config,
-                                            configDescriptor,
-                                            conflicts);
-                                })
+                                .filter(MicrobotPluginListPanel::isVisibleInternalPlugin)
+                                .map(this::createPluginConfigurationDescriptor)
                 )
                 .map(desc ->
                 {
@@ -350,9 +326,42 @@ public class MicrobotPluginListPanel extends MicrobotPluginPanel {
         for (MicrobotPluginListItem pluginListItem : pluginList) {
             if (pluginListItem.getPluginConfig().getPlugin() == plugin) {
                 openConfigurationPanel(pluginListItem.getPluginConfig());
-                break;
+                return;
             }
         }
+
+        PluginDescriptor descriptor = plugin.getClass().getAnnotation(PluginDescriptor.class);
+        if (descriptor != null && !descriptor.hidden()) {
+            openConfigurationPanel(createPluginConfigurationDescriptor(plugin));
+        }
+    }
+
+    private MicrobotPluginConfigurationDescriptor createPluginConfigurationDescriptor(Plugin plugin) {
+        PluginDescriptor descriptor = plugin.getClass().getAnnotation(PluginDescriptor.class);
+        Config config = pluginManager.getPluginConfigProxy(plugin);
+        ConfigDescriptor configDescriptor = config == null ? null : configManager.getConfigDescriptor(config);
+        List<String> conflicts = pluginManager.conflictsForPlugin(plugin).stream()
+                .map(Plugin::getName)
+                .collect(Collectors.toList());
+
+        return new MicrobotPluginConfigurationDescriptor(
+                descriptor.name(),
+                descriptor.description(),
+                descriptor.tags(),
+                plugin,
+                config,
+                configDescriptor,
+                conflicts);
+    }
+
+    static boolean isVisibleInternalPlugin(Plugin plugin) {
+        PluginDescriptor descriptor = plugin.getClass().getAnnotation(PluginDescriptor.class);
+        Package pluginPackage = plugin.getClass().getPackage();
+        return descriptor != null
+                && pluginPackage != null
+                && pluginPackage.getName().contains("microbot")
+                && !descriptor.hidden()
+                && !descriptor.isExternal();
     }
 
     void openConfigurationPanel(MicrobotPluginConfigurationDescriptor plugin) {

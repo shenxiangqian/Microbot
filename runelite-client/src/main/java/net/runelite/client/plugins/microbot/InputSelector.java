@@ -1,13 +1,17 @@
 package net.runelite.client.plugins.microbot;
 
-import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.ClientUI;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.util.ImageUtil;
 
+import javax.inject.Inject;
+import javax.inject.Singleton;
+import javax.swing.SwingUtilities;
+import java.awt.Component;
 import java.awt.image.BufferedImage;
 
+@Singleton
 public class InputSelector {
 
     private static final BufferedImage ENABLED_IMAGE, DISABLED_IMAGE;
@@ -18,35 +22,82 @@ public class InputSelector {
     }
 
     private final ClientToolbar clientToolbar;
-    private NavigationButton enableButton;
-    private NavigationButton disableButton;
+    private final NavigationButton enableButton;
+    private final NavigationButton disableButton;
+    private boolean started;
 
+    @Inject
     public InputSelector(ClientToolbar clientToolbar) {
         this.clientToolbar = clientToolbar;
-        startUp();
+        enableButton = NavigationButton.builder()
+                .tab(false)
+                .icon(ENABLED_IMAGE)
+                .tooltip("Enable Input")
+                .onClick(this::enableClick)
+                .build();
+        disableButton = NavigationButton.builder()
+                .tab(false)
+                .icon(DISABLED_IMAGE)
+                .tooltip("Disable Input")
+                .onClick(this::disableClick)
+                .build();
     }
 
     public void startUp() {
-        enableButton = NavigationButton.builder().tab(false).icon(ENABLED_IMAGE).tooltip("Enable Input").onClick(this::enableClick).build();
-        disableButton = NavigationButton.builder().tab(false).icon(DISABLED_IMAGE).tooltip("Disable Input").onClick(this::disableClick).build();
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(this::startUp);
+            return;
+        }
+        if (started) {
+            return;
+        }
+        started = true;
         addAndRemoveButtons();
+    }
+
+    public void shutDown() {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(this::shutDown);
+            return;
+        }
+        if (!started) {
+            return;
+        }
+        started = false;
+        clientToolbar.removeNavigation(enableButton);
+        clientToolbar.removeNavigation(disableButton);
     }
 
     private void addAndRemoveButtons() {
+        if (!started) {
+            return;
+        }
         clientToolbar.removeNavigation(enableButton);
         clientToolbar.removeNavigation(disableButton);
-        clientToolbar.addNavigation(!ClientUI.getClient().isEnabled() ? enableButton : disableButton);
+        Component client = ClientUI.getClient();
+        clientToolbar.addNavigation(client == null || !client.isEnabled() ? enableButton : disableButton);
     }
 
     public void enableClick() {
-        ClientUI.getClient().setEnabled(true);
-        Microbot.getClient().getCanvas().setFocusable(true);
-        addAndRemoveButtons();
+        setInputEnabled(true);
     }
 
     public void disableClick() {
-        ClientUI.getClient().setEnabled(false);
-        Microbot.getClient().getCanvas().setFocusable(false);
+        setInputEnabled(false);
+    }
+
+    public void setInputEnabled(boolean enabled) {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(() -> setInputEnabled(enabled));
+            return;
+        }
+        Component client = ClientUI.getClient();
+        if (client != null) {
+            client.setEnabled(enabled);
+        }
+        if (Microbot.getClient() != null && Microbot.getClient().getCanvas() != null) {
+            Microbot.getClient().getCanvas().setFocusable(enabled);
+        }
         addAndRemoveButtons();
     }
 }
