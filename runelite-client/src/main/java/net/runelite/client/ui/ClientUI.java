@@ -30,8 +30,6 @@ import com.formdev.flatlaf.util.SystemInfo;
 import com.google.common.base.Strings;
 import com.google.common.collect.Iterables;
 import com.google.inject.Inject;
-import ch.qos.logback.classic.Logger;
-import ch.qos.logback.classic.LoggerContext;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -66,7 +64,6 @@ import net.runelite.client.util.OSType;
 import net.runelite.client.util.SwingUtil;
 import net.runelite.client.util.WinUtil;
 import net.runelite.client.util.*;
-import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -153,7 +150,6 @@ public class ClientUI
 	private List<KeyListener> keyListeners;
 
 	private LogConsolePanel consolePanel;
-	private ConsoleLogAppender consoleLogAppender;
 	private PrintStream consolePrintStream;
 	private JButton consoleToggleButton;
 	private BufferedImage consoleIconOpen;
@@ -1212,7 +1208,7 @@ public class ClientUI
 
 	private void initializeConsoleLogging()
 	{
-		if (consolePanel == null || consoleLogAppender != null)
+		if (consolePanel == null || consolePrintStream != null)
 		{
 			return;
 		}
@@ -1231,14 +1227,6 @@ public class ClientUI
 		}
 
 		System.setOut(consolePrintStream);
-
-		LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
-		consoleLogAppender = new ConsoleLogAppender(consolePanel::append);
-		consoleLogAppender.setContext(loggerContext);
-		consoleLogAppender.start();
-
-		Logger rootLogger = loggerContext.getLogger(Logger.ROOT_LOGGER_NAME);
-		rootLogger.addAppender(consoleLogAppender);
 	}
 
 	private BufferedImage createConsoleIcon(boolean active)

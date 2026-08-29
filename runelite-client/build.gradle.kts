@@ -494,7 +494,8 @@ val microbotReleaseJar = tasks.register<Copy>("microbotReleaseJar") {
     dependsOn(shadowJar)
     from(shadowJar.flatMap { it.archiveFile })
     into(layout.buildDirectory.dir("libs"))
-    rename { "microbot-${microbotVersionProvider.get()}.jar" }
+    //rename { "microbot-${microbotVersionProvider.get()}.jar" }
+    rename { "Launcher.jar" }
 }
 
 tasks.assemble { dependsOn(microbotReleaseJar) }
