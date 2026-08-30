@@ -44,6 +44,7 @@ import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.PluginChanged;
 import net.runelite.client.events.ProfileChanged;
+import net.runelite.client.plugins.lowmemory.LowMemoryPlugin;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.task.Schedule;
 import net.runelite.client.task.ScheduledMethod;
@@ -77,6 +78,7 @@ public class PluginManager {
     private static final File SIDELOADED_PLUGINS = new File(RuneLite.RUNELITE_DIR, "sideloaded-plugins");
 
     private final boolean safeMode;
+    private final boolean lowDetailMode;
     private final EventBus eventBus;
     private final Scheduler scheduler;
     private final ConfigManager configManager;
@@ -93,15 +95,27 @@ public class PluginManager {
     @VisibleForTesting
     PluginManager(
             @Named("safeMode") final boolean safeMode,
+            @Named("lowDetailMode") final boolean lowDetailMode,
             final EventBus eventBus,
             final Scheduler scheduler,
             final ConfigManager configManager,
             final Provider<GameEventManager> sceneTileManager) {
         this.safeMode = safeMode;
+        this.lowDetailMode = lowDetailMode;
         this.eventBus = eventBus;
         this.scheduler = scheduler;
         this.configManager = configManager;
         this.sceneTileManager = sceneTileManager;
+    }
+
+    @VisibleForTesting
+    PluginManager(
+            final boolean safeMode,
+            final EventBus eventBus,
+            final Scheduler scheduler,
+            final ConfigManager configManager,
+            final Provider<GameEventManager> sceneTileManager) {
+        this(safeMode, false, eventBus, scheduler, configManager, sceneTileManager);
     }
 
     @Subscribe
@@ -477,6 +491,11 @@ public class PluginManager {
     public boolean isPluginEnabled(Plugin plugin) {
         final PluginDescriptor pluginDescriptor = plugin.getClass().getAnnotation(PluginDescriptor.class);
         final String keyName = Strings.isNullOrEmpty(pluginDescriptor.configName()) ? plugin.getClass().getSimpleName() : pluginDescriptor.configName();
+
+        if (lowDetailMode && plugin instanceof LowMemoryPlugin) {
+            return true;
+        }
+
         final String value = configManager.getConfiguration(RuneLiteConfig.GROUP_NAME, keyName.toLowerCase());
 
         if (pluginDescriptor.alwaysOn())

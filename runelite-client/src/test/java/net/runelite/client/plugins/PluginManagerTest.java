@@ -53,6 +53,7 @@ import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
+import net.runelite.client.plugins.lowmemory.LowMemoryPlugin;
 import net.runelite.client.plugins.microbot.Microbot;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -107,7 +108,7 @@ public class PluginManagerTest
 		when(configLoader.get()).thenReturn(mock(RuntimeConfig.class));
 
 		Injector injector = Guice.createInjector(Modules
-			.override(new RuneLiteModule(okHttpClient, () -> null, configLoader, true, false, false, true,
+			.override(new RuneLiteModule(okHttpClient, () -> null, configLoader, true, false, false, false, true,
 				RuneLite.DEFAULT_SESSION_FILE,
 				null, false, false, "", RuneLite.RUNELITE_DIR
 			))
@@ -152,6 +153,14 @@ public class PluginManagerTest
 			.filter(Objects::nonNull)
 			.count();
 		assertEquals(expected, plugins.size());
+	}
+
+	@Test
+	public void testLowDetailModeEnablesLowMemoryPluginForSession()
+	{
+		PluginManager pluginManager = new PluginManager(false, true, null, null, null, null);
+
+		assertTrue(pluginManager.isPluginEnabled(new LowMemoryPlugin()));
 	}
 
 	//Added to ignore because it made PluginDescriptor name tags fail due to attempting to create a file with illegal characters

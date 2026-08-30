@@ -25,6 +25,7 @@
 | `--safe-mode` | 禁用外部插件和 GPU 插件（安全模式） | 无 |
 | `--disable-telemetry` | 禁用遥测数据上传 | 无 |
 | `--disable-sounds` | 启动后关闭游戏音乐、普通音效和环境音效 | 无 |
+| `--low-detail` | 本次运行强制启用最低细节并只渲染当前楼层 | 无 |
 | `--disable-walker-update` | 禁用静态 walker 更新 | 无 |
 | `--insecure-skip-tls-verification` | 禁用 TLS 证书验证（不安全） | 无 |
 | `--clean-jagex-launcher` | 删除 `credentials.properties` 文件，允许使用用户名/密码登录 | 无 |
@@ -33,6 +34,7 @@
 | `--insecure-write-credentials` | 将 Jagex Launcher 的认证 token 导出到文本文件（仅供开发） | 无 |
 | `--jav_config <URL>` | 指定自定义 jav_config URL | 必需参数 |
 | `--profile <名称>` | 使用指定的配置文件名称 | 必需参数 |
+| `--index <值>` | 主窗口显示后将窗口标题设置为指定值 | 必需参数 |
 | `--proxy <URL>` | 使用指定的代理服务器 | 必需参数（格式：`scheme://user:pass@host:port`） |
 | `--sessionfile <路径>` | 使用指定的会话文件 | 必需参数（默认：`~/.runelite/session`） |
 | `--session-id <ID>` | 直接使用 session ID 登录（跳过用户名/密码） | 必需参数 |
@@ -70,6 +72,13 @@ java -jar client-<version>-SNAPSHOT-shaded.jar --disable-telemetry
 ```bash
 java -jar client-<version>-SNAPSHOT-shaded.jar --disable-sounds
 ```
+
+**使用最低细节运行：**
+```bash
+java -jar client-<version>-SNAPSHOT-shaded.jar --low-detail
+```
+
+此参数仅在当前客户端进程中生效，不会修改已保存的 Low Detail 插件配置，也不会自动关闭 GPU 或限制 FPS。
 
 **使用代理：**
 ```bash

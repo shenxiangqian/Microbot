@@ -157,6 +157,7 @@ public class RuneLiteDebug {
                 .withRequiredArg()
                 .defaultsTo(RuneLiteProperties.getJavConfig());
         parser.accepts("disable-telemetry", "Disable telemetry");
+        parser.accepts("low-detail", "Run the game in low detail mode");
         parser.accepts("disable-walker-update", "Disable updates for the static walker");
         parser.accepts("profile", "Configuration profile to use").withRequiredArg();
         parser.accepts("noupdate", "Skips the launcher update");
@@ -267,6 +268,7 @@ public class RuneLiteDebug {
                     runtimeConfigLoader,
                     developerMode,
                     options.has("safe-mode"),
+                    options.has("low-detail"),
                     options.has("disable-telemetry"),
                     options.has("disable-walker-update"),
                     options.valueOf(sessionfile),

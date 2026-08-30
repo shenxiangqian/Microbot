@@ -26,6 +26,7 @@ package net.runelite.client.plugins.lowmemory;
 
 import com.google.inject.Provides;
 import javax.inject.Inject;
+import javax.inject.Named;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.events.BeforeRender;
@@ -54,6 +55,10 @@ public class LowMemoryPlugin extends Plugin
 	@Inject
 	private LowMemoryConfig config;
 
+	@Inject
+	@Named("lowDetailMode")
+	private boolean lowDetailMode;
+
 	@Override
 	protected void startUp()
 	{
@@ -64,7 +69,7 @@ public class LowMemoryPlugin extends Plugin
 			// which breaks the gpu plugin due to it requiring the 128x128px textures
 			if (client.getGameState().getState() >= GameState.LOGIN_SCREEN.getState())
 			{
-				client.changeMemoryMode(config.lowDetail());
+				client.changeMemoryMode(useLowDetail());
 			}
 		});
 	}
@@ -90,7 +95,7 @@ public class LowMemoryPlugin extends Plugin
 		}
 		else if (gameStateChanged.getGameState() == GameState.LOGIN_SCREEN)
 		{
-			client.changeMemoryMode(config.lowDetail());
+			client.changeMemoryMode(useLowDetail());
 		}
 	}
 
@@ -103,7 +108,7 @@ public class LowMemoryPlugin extends Plugin
 			{
 				if (client.getGameState().getState() >= GameState.LOGIN_SCREEN.getState())
 				{
-					client.changeMemoryMode(config.lowDetail());
+					client.changeMemoryMode(useLowDetail());
 				}
 			});
 		}
@@ -120,6 +125,16 @@ public class LowMemoryPlugin extends Plugin
 		// This needs to be set to the current plane, but there is no event for plane change, so
 		// just set it each render.
 		wv.getScene().
-			setMinLevel(config.hideLowerPlanes() ? wv.getPlane() : 0);
+			setMinLevel(hideLowerPlanes() ? wv.getPlane() : 0);
+	}
+
+	boolean useLowDetail()
+	{
+		return lowDetailMode || config.lowDetail();
+	}
+
+	boolean hideLowerPlanes()
+	{
+		return lowDetailMode || config.hideLowerPlanes();
 	}
 }

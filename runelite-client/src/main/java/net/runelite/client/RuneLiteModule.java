@@ -70,6 +70,7 @@ public class RuneLiteModule extends AbstractModule
 	private final RuntimeConfigLoader configLoader;
 	private final boolean developerMode;
 	private final boolean safeMode;
+	private final boolean lowDetailMode;
 	private final boolean disableTelemetry;
 	private final boolean disableWalkerUpdate;
 	private final File sessionfile;
@@ -121,6 +122,7 @@ public class RuneLiteModule extends AbstractModule
 
 		bindConstant().annotatedWith(Names.named("developerMode")).to(developerMode);
 		bindConstant().annotatedWith(Names.named("safeMode")).to(safeMode);
+		bindConstant().annotatedWith(Names.named("lowDetailMode")).to(lowDetailMode);
 		bindConstant().annotatedWith(Names.named("disableTelemetry")).to(disableTelemetry);
 		bindConstant().annotatedWith(Names.named("disableWalkerUpdate")).to(disableWalkerUpdate);
 		bind(File.class).annotatedWith(Names.named("sessionfile")).toInstance(sessionfile);

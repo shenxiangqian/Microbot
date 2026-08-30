@@ -231,6 +231,7 @@ public class RuneLite
 			.defaultsTo(RuneLiteProperties.getJavConfig());
 		parser.accepts("disable-telemetry", "Disable telemetry");
 		parser.accepts("disable-sounds", "Disable all in-game sounds");
+		parser.accepts("low-detail", "Run the game in low detail mode");
         parser.accepts("disable-walker-update", "Disable updates for the static walker");
 		parser.accepts("profile", "Configuration profile to use").withRequiredArg();
 		parser.accepts("noupdate", "Skips the launcher update");
@@ -303,6 +304,7 @@ public class RuneLite
 		String startupScript = options.has(scriptOpt) ? options.valueOf(scriptOpt) : null;
 		String windowTitleOverride = options.has(indexOpt) ? options.valueOf(indexOpt) : "";
 		boolean disableSounds = options.has("disable-sounds");
+		boolean lowDetailMode = options.has("low-detail");
 
         if (options.has("clean-jagex-launcher")) {
             System.out.println("clean-jagex-launcher option is enabled. This will delete your credentials.properties file to allow logging in with a username/password");
@@ -443,6 +445,7 @@ public class RuneLite
 					runtimeConfigLoader,
 					developerMode,
 					options.has("safe-mode"),
+					lowDetailMode,
 					options.has("disable-telemetry"),
 					options.has("disable-walker-update"),
 					options.valueOf(sessionfile),

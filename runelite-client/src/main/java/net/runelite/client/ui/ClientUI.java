@@ -111,7 +111,9 @@ public class ClientUI
 	private final EventBus eventBus;
 	private final boolean safeMode;
 	private final String title;
+	private final String windowTitleOverride;
 	private final boolean windowTitleOverridden;
+	private boolean windowTitleOverrideApplied;
 
 	private final Rectangle sidebarButtonPosition = new Rectangle();
 	private BufferedImage sidebarOpenIcon;
@@ -183,8 +185,9 @@ public class ClientUI
 		this.clientThreadProvider = clientThreadProvider;
 		this.eventBus = eventBus;
 		this.safeMode = safeMode;
+		this.windowTitleOverride = windowTitleOverride;
 		this.windowTitleOverridden = !Strings.isNullOrEmpty(windowTitleOverride);
-		this.title = windowTitleOverridden ? windowTitleOverride : title + (safeMode ? " (safe mode)" : "");
+		this.title = title + (safeMode ? " (safe mode)" : "");
 
 		normalBoundsTimer = new Timer(250, _ev -> setLastNormalBounds());
 		normalBoundsTimer.setRepeats(false);
@@ -668,6 +671,11 @@ public class ClientUI
 
 			// Show frame
 			frame.setVisible(true);
+			if (windowTitleOverridden)
+			{
+				windowTitleOverrideApplied = true;
+				frame.setTitle(windowTitleOverride);
+			}
 			// On macos setResizable needs to be called after setVisible
 			frame.setResizable(!config.lockWindowSize());
 			frame.toFront();
@@ -1283,7 +1291,11 @@ public class ClientUI
 			frame.setOpacity(config.windowOpacity() / 100.0f);
 		}
 
-		if (!windowTitleOverridden && config.usernameInTitle())
+		if (windowTitleOverrideApplied)
+		{
+			frame.setTitle(windowTitleOverride);
+		}
+		else if (!windowTitleOverridden && config.usernameInTitle())
 		{
 			final Player player = ((Client) client).getLocalPlayer();
 
