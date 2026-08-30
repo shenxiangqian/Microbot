@@ -45,6 +45,7 @@ import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.MicrobotClientLoader;
 import net.runelite.client.plugins.microbot.externalplugins.MicrobotPluginManager;
 import net.runelite.client.proxy.ProxyChecker;
+import net.runelite.client.proxy.ProxyConfiguration;
 import net.runelite.client.ui.ClientUI;
 import net.runelite.client.ui.FatalErrorDialog;
 import net.runelite.client.ui.SplashScreen;
@@ -163,6 +164,16 @@ public class RuneLiteDebug {
 
         final ArgumentAcceptingOptionSpec<String> proxyInfo = parser.accepts("proxy", "Use a proxy server for your runelite session")
                 .withRequiredArg().ofType(String.class);
+        final ArgumentAcceptingOptionSpec<String> proxyType = parser.accepts("proxy-type", "Proxy type (socks5, socks4, http)")
+                .withRequiredArg().ofType(String.class);
+        final ArgumentAcceptingOptionSpec<String> proxyHost = parser.accepts("proxy-host", "Proxy server host")
+                .withRequiredArg().ofType(String.class);
+        final ArgumentAcceptingOptionSpec<Integer> proxyPort = parser.accepts("proxy-port", "Proxy server port")
+                .withRequiredArg().ofType(Integer.class);
+        final ArgumentAcceptingOptionSpec<String> proxyUser = parser.accepts("proxy-user", "Proxy username")
+                .withRequiredArg().ofType(String.class);
+        final ArgumentAcceptingOptionSpec<String> proxyPass = parser.accepts("proxy-pass", "Proxy password")
+                .withRequiredArg().ofType(String.class);
         final ArgumentAcceptingOptionSpec<File> sessionfile = parser.accepts("sessionfile", "Use a specified session file")
                 .withRequiredArg()
                 .withValuesConvertedBy(new ConfigFileConverter())
@@ -196,6 +207,8 @@ public class RuneLiteDebug {
             logger.setLevel(Level.DEBUG);
         }
 
+        ProxyConfiguration.setupProxy(options, proxyInfo, proxyType, proxyHost, proxyPort, proxyUser, proxyPass);
+
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) ->
         {
             log.error("Uncaught exception:", throwable);
@@ -210,14 +223,9 @@ public class RuneLiteDebug {
 
         SplashScreen.init();
 
-        if (options.has(proxyInfo)) {
+        if (options.has(proxyInfo) || options.has(proxyHost)) {
             String ip = ProxyChecker.getDetectedIp(okHttpClient);
-            if (ip.isEmpty()) {
-                Microbot.showMessage("Failed to detect external IP address, check your proxy settings. \n\n Make sure to use the format scheme://user:pass@host:port");
-                System.exit(1);
-            }
-
-            ClientUI.proxyMessage = "Proxy enabled (IP " + ip + ")";
+            ClientUI.setExternalIp(ip);
         }
 
         SplashScreen.stage(0, "Retrieving client", "");
