@@ -58,6 +58,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import javax.annotation.Nullable;
+import javax.inject.Named;
 import javax.inject.Singleton;
 import javax.management.ObjectName;
 import javax.net.ssl.SSLContext;
@@ -85,6 +86,7 @@ import net.runelite.client.plugins.microbot.externalplugins.MicrobotPluginManage
 import net.runelite.client.proxy.ProxyChecker;
 import net.runelite.client.proxy.ProxyConfiguration;
 import net.runelite.client.rs.ClientLoader;
+import net.runelite.client.rs.JagexAccountStorage;
 import net.runelite.client.rs.JagexSessionCredentials;
 import net.runelite.client.ui.ClientUI;
 import net.runelite.client.ui.DrawManager;
@@ -149,7 +151,7 @@ public class RuneLite
 
 	private static final int MAX_OKHTTP_CACHE_SIZE = 20 * 1024 * 1024; // 20mb
 	private static final Set<String> SENSITIVE_ARGUMENTS = Set.of(
-		"session-id", "character-id", "proxy", "proxy-user", "proxy-pass");
+		"session-id", "character-id", "accounts-root", "proxy", "proxy-user", "proxy-pass");
 	private static final Set<String> SENSITIVE_SYSTEM_PROPERTIES = Set.of(
 		"user.home", "runelite.credentials.path", "JX_SESSION_ID", "JX_CHARACTER_ID",
 		"JX_ACCESS_TOKEN", "JX_REFRESH_TOKEN");
@@ -190,6 +192,10 @@ public class RuneLite
 
 	@Inject
 	private Client client;
+
+	@Inject
+	@Named("jagexUserHome")
+	private File jagexUserHome;
 
 	@Inject
 	@Nullable
@@ -252,6 +258,11 @@ public class RuneLite
                 .withRequiredArg()
                 .ofType(String.class);
 
+		final ArgumentAcceptingOptionSpec<File> accountsRootOpt = parser.accepts(
+			"accounts-root", "Store account-specific Jagex files under this directory")
+			.withRequiredArg()
+			.ofType(File.class);
+
         final ArgumentAcceptingOptionSpec<Integer> fpsOpt = parser.accepts("fps", "Set target FPS (frames per second)")
                 .withRequiredArg()
                 .ofType(Integer.class);
@@ -271,9 +282,14 @@ public class RuneLite
 		// Extract session-id and character-id for direct session login
 		String sessionId = options.has(sessionIdOpt) ? options.valueOf(sessionIdOpt) : null;
 		String characterId = options.has(characterIdOpt) ? options.valueOf(characterIdOpt) : null;
+		File accountsRoot = options.has(accountsRootOpt) ? options.valueOf(accountsRootOpt) : null;
 		if (options.has(sessionIdOpt) != options.has(characterIdOpt))
 		{
 			throw new IllegalArgumentException("--session-id and --character-id must be provided together");
+		}
+		if (accountsRoot != null && characterId == null)
+		{
+			throw new IllegalArgumentException("--accounts-root requires --character-id");
 		}
 
 		// Extract FPS setting
@@ -304,8 +320,11 @@ public class RuneLite
             logger.setLevel(Level.DEBUG);
         }
 
+		Path jagexUserHome = JagexAccountStorage.prepare(
+			RUNELITE_DIR.toPath(), accountsRoot, characterId);
+
 		if (options.has("clean-randomdat")) {
-			File randomDat = new File(System.getProperty("user.home"), "random.dat");
+			File randomDat = jagexUserHome.resolve("random.dat").toFile();
 
 			// If random.dat exists, remove it
 			if (randomDat.exists()) {
@@ -408,7 +427,6 @@ public class RuneLite
 			log.info("Java VM arguments: {}", formatJvmArgumentsForLog(runtime.getInputArguments()));
 
 			final long start = System.currentTimeMillis();
-
 			try (JagexSessionCredentials ignored = JagexSessionCredentials.install(
 				RUNELITE_DIR.toPath(), sessionId, characterId))
 			{
@@ -424,7 +442,8 @@ public class RuneLite
 					(String) options.valueOf("profile"),
 					options.has(insecureWriteCredentials),
 					options.has("noupdate"),
-					windowTitleOverride
+					windowTitleOverride,
+					jagexUserHome.toFile()
 				));
 
 				injector.getInstance(RuneLite.class).start(startupScript);
@@ -615,7 +634,7 @@ public class RuneLite
 		copyJagexCache();
 
 		System.setProperty("jagex.disableBouncyCastle", "true");
-		System.setProperty("jagex.userhome", RUNELITE_DIR.getAbsolutePath());
+		System.setProperty("jagex.userhome", jagexUserHome.getAbsolutePath());
 
 		client.initialize();
 

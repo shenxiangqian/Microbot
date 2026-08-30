@@ -77,6 +77,7 @@ public class RuneLiteModule extends AbstractModule
 	private final boolean insecureWriteCredentials;
 	private final boolean noupdate;
 	private final String windowTitleOverride;
+	private final File jagexUserHome;
 
 	@Override
 	protected void configure()
@@ -128,6 +129,7 @@ public class RuneLiteModule extends AbstractModule
 		bindConstant().annotatedWith(Names.named("noupdate")).to(noupdate);
 		bindConstant().annotatedWith(Names.named("windowTitleOverride")).to(windowTitleOverride);
 		bind(File.class).annotatedWith(Names.named("runeLiteDir")).toInstance(RuneLite.RUNELITE_DIR);
+		bind(File.class).annotatedWith(Names.named("jagexUserHome")).toInstance(jagexUserHome);
 		bind(ScheduledExecutorService.class).toInstance(new ExecutorServiceExceptionLogger(Executors.newSingleThreadScheduledExecutor()));
 		bind(OkHttpClient.class).toInstance(okHttpClient);
 		bind(RuntimeConfigLoader.class).toInstance(configLoader);

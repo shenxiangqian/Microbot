@@ -27,7 +27,7 @@
 | `--disable-walker-update` | 禁用静态 walker 更新 | 无 |
 | `--insecure-skip-tls-verification` | 禁用 TLS 证书验证（不安全） | 无 |
 | `--clean-jagex-launcher` | 删除 `credentials.properties` 文件，允许使用用户名/密码登录 | 无 |
-| `--clean-randomdat` | 清理并重新创建只读的 `random.dat` 文件 | 无 |
+| `--clean-randomdat` | 清理并重新创建当前 Jagex home 中的 `random.dat` 文件 | 无 |
 | `--noupdate` | 跳过启动器更新检查 | 无 |
 | `--insecure-write-credentials` | 将 Jagex Launcher 的认证 token 导出到文本文件（仅供开发） | 无 |
 | `--jav_config <URL>` | 指定自定义 jav_config URL | 必需参数 |
@@ -36,6 +36,7 @@
 | `--sessionfile <路径>` | 使用指定的会话文件 | 必需参数（默认：`~/.runelite/session`） |
 | `--session-id <ID>` | 直接使用 session ID 登录（跳过用户名/密码） | 必需参数 |
 | `--character-id <ID>` | 指定要登录的角色 ID | 必需参数 |
+| `--accounts-root <路径>` | 按 character ID 隔离 Jagex 身份文件并共享游戏缓存 | 必需参数 |
 
 ### 使用方法
 
@@ -112,6 +113,19 @@ java -jar client-<version>-SNAPSHOT-shaded.jar \
 - Session ID 有过期时间，需要定期刷新
 - **不要在命令行历史中暴露真实的 session ID**，建议使用环境变量或配置文件
 - Session ID 和 Character ID 在启动日志中会完全脱敏
+
+**按账号隔离 Jagex 身份文件并共享缓存：**
+```powershell
+java -jar Launcher.jar `
+  --accounts-root "C:\MicrobotAccounts" `
+  --session-id "your-session-id-here" `
+  --character-id "344492934"
+```
+
+- 使用该参数时不要再传账号专用的 `-Duser.home`；RuneLite 设置、插件和脚本目录将继续共享
+- `random.dat`、`preferences.dat` 和 `preferences2.dat` 保存在 `<accounts-root>\<character-id>\.runelite` 下并保持账号独立
+- `main_file_cache.dat2` 和 `main_file_cache.idx*` 通过硬链接共享默认 `.runelite` 中的游戏缓存
+- 公共 RuneLite 目录和 `accounts-root` 必须位于支持硬链接的同一磁盘分区
 
 **组合使用多个参数：**
 ```bash
@@ -418,7 +432,7 @@ java -jar client-<version>-SNAPSHOT-shaded.jar \
 
 ### Q8: `--clean-randomdat` 有什么用？
 
-删除并重新创建 `~/random.dat` 文件（只读），用于解决某些反作弊机制相关的问题。
+删除并重新创建当前 Jagex home 下的 `random.dat` 文件（只读）。使用 `--accounts-root` 时，该文件位于对应 character ID 的 `.runelite` 目录中。
 
 ### Q9: 如何验证代理是否正常工作？
 

@@ -273,7 +273,8 @@ public class RuneLiteDebug {
                     (String) options.valueOf("profile"),
                     options.has(insecureWriteCredentials),
                     options.has("noupdate"),
-                    windowTitleOverride
+                    windowTitleOverride,
+                    RuneLite.RUNELITE_DIR
             ));
 
 

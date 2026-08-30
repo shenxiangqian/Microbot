@@ -20,11 +20,12 @@ public class RuneLiteTest
 			"--proxy", "socks5://user:password@example.test:1080",
 			"--proxy-user", "user",
 			"--proxy-pass=password",
+			"--accounts-root", "C:\\MicrobotAccounts",
 			"--index", "12"
 		};
 
 		assertEquals(
-			"--session-id *** --character-id=*** --proxy *** --proxy-user *** --proxy-pass=*** --index 12",
+			"--session-id *** --character-id=*** --proxy *** --proxy-user *** --proxy-pass=*** --accounts-root *** --index 12",
 			RuneLite.formatArgumentsForLog(arguments));
 	}
 
