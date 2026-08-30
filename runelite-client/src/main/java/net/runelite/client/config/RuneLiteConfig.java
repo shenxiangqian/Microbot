@@ -185,19 +185,6 @@ public interface RuneLiteConfig extends Config
 	}
 
 	@ConfigItem(
-		keyName = "trayIcon",
-		name = "Enable tray icon",
-		description = "Enables icon in system tray.",
-		warning = "Disabling this may limit your ability to receive tray notifications.\nPlease restart your client after changing this setting.",
-		position = 20,
-		section = notificationSettings
-	)
-	default boolean enableTrayIcon()
-	{
-		return true;
-	}
-
-	@ConfigItem(
 		keyName = "notificationTray",
 		name = "Enable tray notifications",
 		description = "Enables tray notifications.",

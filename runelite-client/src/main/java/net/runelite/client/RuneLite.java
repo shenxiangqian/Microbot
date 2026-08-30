@@ -75,7 +75,9 @@ import joptsimple.ValueConverter;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
+import net.runelite.api.Preferences;
 import net.runelite.client.account.SessionManager;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.discord.DiscordService;
 import net.runelite.client.eventbus.EventBus;
@@ -194,6 +196,9 @@ public class RuneLite
 	private Client client;
 
 	@Inject
+	private ClientThread clientThread;
+
+	@Inject
 	@Named("jagexUserHome")
 	private File jagexUserHome;
 
@@ -225,6 +230,7 @@ public class RuneLite
 			.withRequiredArg()
 			.defaultsTo(RuneLiteProperties.getJavConfig());
 		parser.accepts("disable-telemetry", "Disable telemetry");
+		parser.accepts("disable-sounds", "Disable all in-game sounds");
         parser.accepts("disable-walker-update", "Disable updates for the static walker");
 		parser.accepts("profile", "Configuration profile to use").withRequiredArg();
 		parser.accepts("noupdate", "Skips the launcher update");
@@ -296,6 +302,7 @@ public class RuneLite
 		Integer targetFps = options.has(fpsOpt) ? options.valueOf(fpsOpt) : null;
 		String startupScript = options.has(scriptOpt) ? options.valueOf(scriptOpt) : null;
 		String windowTitleOverride = options.has(indexOpt) ? options.valueOf(indexOpt) : "";
+		boolean disableSounds = options.has("disable-sounds");
 
         if (options.has("clean-jagex-launcher")) {
             System.out.println("clean-jagex-launcher option is enabled. This will delete your credentials.properties file to allow logging in with a username/password");
@@ -446,7 +453,7 @@ public class RuneLite
 					jagexUserHome.toFile()
 				));
 
-				injector.getInstance(RuneLite.class).start(startupScript);
+				injector.getInstance(RuneLite.class).start(startupScript, disableSounds);
 			}
 
 			// Apply --fps throttle independently of the FpsPlugin
@@ -619,10 +626,15 @@ public class RuneLite
 
 	public void start() throws Exception
 	{
-		start(null);
+		start(null, false);
 	}
 
 	public void start(@Nullable String startupScript) throws Exception
+	{
+		start(startupScript, false);
+	}
+
+	public void start(@Nullable String startupScript, boolean disableSounds) throws Exception
 	{
 		// Inject members into client
 		injector.injectMembers(client);
@@ -698,6 +710,19 @@ public class RuneLite
 
 		clientUI.show();
 
+		if (disableSounds)
+		{
+			clientThread.invokeLater(() ->
+			{
+				boolean disabled = disableGameSounds(client);
+				if (disabled)
+				{
+					log.info("All in-game sounds disabled");
+				}
+				return disabled;
+			});
+		}
+
 		client.unblockStartup();
 
 		if (startupScript != null)
@@ -731,6 +756,21 @@ public class RuneLite
 
 		ReflectUtil.queueInjectorAnnotationCacheInvalidation(injector);
 		ReflectUtil.invalidateAnnotationCaches();
+	}
+
+	@VisibleForTesting
+	static boolean disableGameSounds(Client client)
+	{
+		Preferences preferences = client.getPreferences();
+		if (preferences == null)
+		{
+			return false;
+		}
+
+		client.setMusicVolume(0);
+		preferences.setSoundEffectVolume(0);
+		preferences.setAreaSoundEffectVolume(0);
+		return true;
 	}
 
 	@VisibleForTesting

@@ -65,8 +65,6 @@ import net.runelite.client.util.SwingUtil;
 import net.runelite.client.util.WinUtil;
 import net.runelite.client.util.*;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import javax.inject.Named;
 import javax.inject.Provider;
 import javax.inject.Singleton;
@@ -622,12 +620,6 @@ public class ClientUI
 		{
 			// Layout frame
 			frame.pack();
-
-			// Create tray icon (needs to be created after frame is packed)
-			if (config.enableTrayIcon())
-			{
-				trayIcon = createTrayIcon(ICON_16, title, frame);
-			}
 
 			// Move frame around (needs to be done after frame is packed)
 			boolean appliedSize = false;
@@ -1466,55 +1458,6 @@ public class ClientUI
 		// the applet is resized.
 		System.setProperty("sun.awt.noerasebackground", "true");
 	}
-
-	@Nullable
-	private static TrayIcon createTrayIcon(@Nonnull final Image icon, @Nonnull final String title, @Nonnull final Frame frame)
-	{
-		if (!SystemTray.isSupported())
-		{
-			return null;
-		}
-
-		final SystemTray systemTray = SystemTray.getSystemTray();
-		final TrayIcon trayIcon = new TrayIcon(icon, title);
-		trayIcon.setImageAutoSize(true);
-
-		try
-		{
-			systemTray.add(trayIcon);
-		}
-		catch (AWTException ex)
-		{
-			log.debug("Unable to add system tray icon", ex);
-			return trayIcon;
-		}
-
-		// Bring to front when tray icon is clicked
-		trayIcon.addMouseListener(new java.awt.event.MouseAdapter()
-		{
-			@Override
-			public void mouseClicked(MouseEvent e)
-			{
-				if (OSType.getOSType() == OSType.MacOS && !frame.isFocused())
-				{
-					// On macOS, frame.setVisible(true) only restores focus when the visibility was previously false.
-					// The frame's visibility is not set to false when the window loses focus, so we set it manually.
-					// Additionally, in order to bring the window to the foreground,
-					// frame.setVisible(true) calls CPlatformWindow::nativePushNSWindowToFront.
-					// However, this native method is not called with activateIgnoringOtherApps:YES,
-					// so any other active window will prevent our window from being brought to the front.
-					// To work around this, use eawt requestForeground() via java.desktop.
-					frame.setVisible(false);
-					Desktop.getDesktop().requestForeground(true);
-				}
-				frame.setVisible(true);
-				frame.setState(Frame.NORMAL); // Restore
-			}
-		});
-
-		return trayIcon;
-	}
-
 
 	private static final class TeeOutputStream extends OutputStream
 	{

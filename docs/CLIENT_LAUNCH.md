@@ -24,6 +24,7 @@
 | `--debug` | 启用调试日志输出（DEBUG 级别） | 无 |
 | `--safe-mode` | 禁用外部插件和 GPU 插件（安全模式） | 无 |
 | `--disable-telemetry` | 禁用遥测数据上传 | 无 |
+| `--disable-sounds` | 启动后关闭游戏音乐、普通音效和环境音效 | 无 |
 | `--disable-walker-update` | 禁用静态 walker 更新 | 无 |
 | `--insecure-skip-tls-verification` | 禁用 TLS 证书验证（不安全） | 无 |
 | `--clean-jagex-launcher` | 删除 `credentials.properties` 文件，允许使用用户名/密码登录 | 无 |
@@ -63,6 +64,11 @@ java -jar client-<version>-SNAPSHOT-shaded.jar --safe-mode
 **禁用遥测：**
 ```bash
 java -jar client-<version>-SNAPSHOT-shaded.jar --disable-telemetry
+```
+
+**关闭所有游戏声音：**
+```bash
+java -jar client-<version>-SNAPSHOT-shaded.jar --disable-sounds
 ```
 
 **使用代理：**

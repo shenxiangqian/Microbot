@@ -5,12 +5,31 @@
 package net.runelite.client;
 
 import java.util.List;
+import net.runelite.api.Client;
+import net.runelite.api.Preferences;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 public class RuneLiteTest
 {
+	@Test
+	public void testDisableGameSounds()
+	{
+		Client client = mock(Client.class);
+		Preferences preferences = mock(Preferences.class);
+		when(client.getPreferences()).thenReturn(preferences);
+
+		assertTrue(RuneLite.disableGameSounds(client));
+		verify(client).setMusicVolume(0);
+		verify(preferences).setSoundEffectVolume(0);
+		verify(preferences).setAreaSoundEffectVolume(0);
+	}
+
 	@Test
 	public void testSensitiveArgumentsAreRedacted()
 	{
