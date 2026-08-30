@@ -113,6 +113,7 @@ public class ClientUI
 	private final EventBus eventBus;
 	private final boolean safeMode;
 	private final String title;
+	private final boolean windowTitleOverridden;
 
 	private final Rectangle sidebarButtonPosition = new Rectangle();
 	private BufferedImage sidebarOpenIcon;
@@ -173,7 +174,8 @@ public class ClientUI
 		Provider<ClientThread> clientThreadProvider,
 		EventBus eventBus,
 		@Named("safeMode") boolean safeMode,
-		@Named("runelite.title") String title
+		@Named("runelite.title") String title,
+		@Named("windowTitleOverride") String windowTitleOverride
 	)
 	{
 		this.config = config;
@@ -183,7 +185,8 @@ public class ClientUI
 		this.clientThreadProvider = clientThreadProvider;
 		this.eventBus = eventBus;
 		this.safeMode = safeMode;
-		this.title = title + (safeMode ? " (safe mode)" : "");
+		this.windowTitleOverridden = !Strings.isNullOrEmpty(windowTitleOverride);
+		this.title = windowTitleOverridden ? windowTitleOverride : title + (safeMode ? " (safe mode)" : "");
 
 		normalBoundsTimer = new Timer(250, _ev -> setLastNormalBounds());
 		normalBoundsTimer.setRepeats(false);
@@ -254,7 +257,7 @@ public class ClientUI
 	@Subscribe
 	private void onGameStateChanged(final GameStateChanged event)
 	{
-		if (event.getGameState() != GameState.LOGGED_IN || !config.usernameInTitle())
+		if (event.getGameState() != GameState.LOGGED_IN || windowTitleOverridden || !config.usernameInTitle())
 		{
 			return;
 		}
@@ -1288,7 +1291,7 @@ public class ClientUI
 			frame.setOpacity(config.windowOpacity() / 100.0f);
 		}
 
-		if (config.usernameInTitle())
+		if (!windowTitleOverridden && config.usernameInTitle())
 		{
 			final Player player = ((Client) client).getLocalPlayer();
 

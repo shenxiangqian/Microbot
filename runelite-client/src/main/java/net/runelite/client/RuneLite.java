@@ -254,6 +254,9 @@ public class RuneLite
 		final ArgumentAcceptingOptionSpec<String> scriptOpt = parser.accepts("script", "External script to start after client initialization")
 			.withRequiredArg()
 			.ofType(String.class);
+		final ArgumentAcceptingOptionSpec<String> indexOpt = parser.accepts("index", "Set the client window title")
+			.withRequiredArg()
+			.ofType(String.class);
 
 		final OptionSpec<Void> insecureWriteCredentials = parser.accepts("insecure-write-credentials", "Dump authentication tokens from the Jagex Launcher to a text file to be used for development");
 
@@ -267,6 +270,7 @@ public class RuneLite
 		// Extract FPS setting
 		Integer targetFps = options.has(fpsOpt) ? options.valueOf(fpsOpt) : null;
 		String startupScript = options.has(scriptOpt) ? options.valueOf(scriptOpt) : null;
+		String windowTitleOverride = options.has(indexOpt) ? options.valueOf(indexOpt) : "";
 
         if (options.has("clean-jagex-launcher")) {
             System.out.println("clean-jagex-launcher option is enabled. This will delete your credentials.properties file to allow logging in with a username/password");
@@ -406,7 +410,8 @@ public class RuneLite
 				options.valueOf(sessionfile),
 				(String) options.valueOf("profile"),
 				options.has(insecureWriteCredentials),
-				options.has("noupdate")
+				options.has("noupdate"),
+				windowTitleOverride
 			));
 
 			injector.getInstance(RuneLite.class).start(startupScript);

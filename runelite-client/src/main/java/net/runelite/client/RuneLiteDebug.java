@@ -163,6 +163,8 @@ public class RuneLiteDebug {
 
         final ArgumentAcceptingOptionSpec<String> proxyInfo = parser.accepts("proxy", "Use a proxy server for your runelite session")
                 .withRequiredArg().ofType(String.class);
+        final ArgumentAcceptingOptionSpec<String> indexOpt = parser.accepts("index", "Set the client window title")
+                .withRequiredArg().ofType(String.class);
         final ArgumentAcceptingOptionSpec<File> sessionfile = parser.accepts("sessionfile", "Use a specified session file")
                 .withRequiredArg()
                 .withValuesConvertedBy(new ConfigFileConverter())
@@ -172,6 +174,7 @@ public class RuneLiteDebug {
 
         parser.accepts("help", "Show this text").forHelp();
         OptionSet options = parser.parse(args);
+        String windowTitleOverride = options.has(indexOpt) ? options.valueOf(indexOpt) : "";
 
         if (options.has("clean-jagex-launcher")) {
             System.out.println("clean-jagex-launcher option is enabled. This will delete your credentials.properties file to allow logging in with a username/password");
@@ -269,7 +272,8 @@ public class RuneLiteDebug {
                     options.valueOf(sessionfile),
                     (String) options.valueOf("profile"),
                     options.has(insecureWriteCredentials),
-                    options.has("noupdate")
+                    options.has("noupdate"),
+                    windowTitleOverride
             ));
 
 

@@ -76,6 +76,7 @@ public class RuneLiteModule extends AbstractModule
 	private final String profile;
 	private final boolean insecureWriteCredentials;
 	private final boolean noupdate;
+	private final String windowTitleOverride;
 
 	@Override
 	protected void configure()
@@ -125,6 +126,7 @@ public class RuneLiteModule extends AbstractModule
 		bind(String.class).annotatedWith(Names.named("profile")).toProvider(Providers.of(profile));
 		bindConstant().annotatedWith(Names.named("insecureWriteCredentials")).to(insecureWriteCredentials);
 		bindConstant().annotatedWith(Names.named("noupdate")).to(noupdate);
+		bindConstant().annotatedWith(Names.named("windowTitleOverride")).to(windowTitleOverride);
 		bind(File.class).annotatedWith(Names.named("runeLiteDir")).toInstance(RuneLite.RUNELITE_DIR);
 		bind(ScheduledExecutorService.class).toInstance(new ExecutorServiceExceptionLogger(Executors.newSingleThreadScheduledExecutor()));
 		bind(OkHttpClient.class).toInstance(okHttpClient);
