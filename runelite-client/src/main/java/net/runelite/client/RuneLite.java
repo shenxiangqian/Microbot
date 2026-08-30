@@ -335,9 +335,14 @@ public class RuneLite
 
 		SplashScreen.stage(0, "Setting up proxy", "Testing proxy address...");
 
-		if (options.has(proxyInfo) || options.has(proxyHost)) {
+		if (options.has(proxyInfo)) {
 			String ip = ProxyChecker.getDetectedIp(okHttpClient);
-			ClientUI.setExternalIp(ip);
+			if (ip.isEmpty()) {
+				Microbot.showMessage("Failed to detect external IP address, check your proxy settings. \n\n Make sure to use the format scheme://user:pass@host:port");
+				System.exit(1);
+			}
+
+			ClientUI.proxyMessage = "Proxy enabled (IP " + ip + ")";
 		}
 
 

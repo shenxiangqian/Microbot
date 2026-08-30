@@ -101,7 +101,6 @@ public class ClientUI
 	public static final BufferedImage ICON_128 = ImageUtil.loadImageResource(Microbot.class, "microbot_logo.png");
 	public static final BufferedImage ICON_16 = ImageUtil.loadImageResource(Microbot.class, "microbot_logo.png");
 	public static String proxyMessage = "";
-	private static String externalIp = "";
 	@Getter
 	private TrayIcon trayIcon;
 
@@ -285,29 +284,9 @@ public class ClientUI
 				return false;
 			}
 
-			frame.setTitle(buildWindowTitle(name));
+			frame.setTitle(title + " - " + name);
 			return true;
 		});
-	}
-
-	public static void setExternalIp(@Nullable String ip)
-	{
-		externalIp = Strings.isNullOrEmpty(ip) ? "unavailable" : ip;
-		proxyMessage = "Proxy enabled (IP " + externalIp + ")";
-	}
-
-	private String buildWindowTitle(@Nullable String playerName)
-	{
-		String windowTitle = title;
-		if (!Strings.isNullOrEmpty(playerName))
-		{
-			windowTitle += " - " + playerName;
-		}
-		if (!Strings.isNullOrEmpty(externalIp))
-		{
-			windowTitle += " - IP: " + externalIp;
-		}
-		return windowTitle;
 	}
 
 	/**
@@ -330,7 +309,7 @@ public class ClientUI
 				OSXFullScreenAdapter.install(frame);
 			}
 
-			frame.setTitle(buildWindowTitle(null));
+			frame.setTitle(title);
 			frame.setIconImages(Arrays.asList(ICON_128, ICON_16));
 			frame.setLocationRelativeTo(frame.getOwner());
 			frame.setResizable(true);
@@ -1309,17 +1288,19 @@ public class ClientUI
 			frame.setOpacity(config.windowOpacity() / 100.0f);
 		}
 
-		String playerName = null;
 		if (config.usernameInTitle())
 		{
 			final Player player = ((Client) client).getLocalPlayer();
 
 			if (player != null && player.getName() != null)
 			{
-				playerName = player.getName();
+				frame.setTitle(title + " - " + player.getName());
 			}
 		}
-		frame.setTitle(buildWindowTitle(playerName));
+		else
+		{
+			frame.setTitle(title);
+		}
 
 		if (frame.isAlwaysOnTopSupported())
 		{
