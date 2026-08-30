@@ -253,12 +253,12 @@ public class RuneLiteDebug {
 
             log.info("RuneLite {} (launcher version {}) starting up, args: {}",
                     RuneLiteProperties.getVersion(), MoreObjects.firstNonNull(RuneLiteProperties.getLauncherVersion(), "unknown"),
-                    args.length == 0 ? "none" : String.join(" ", args));
+                    RuneLite.formatArgumentsForLog(args));
 
             final RuntimeMXBean runtime = ManagementFactory.getRuntimeMXBean();
             // This includes arguments from _JAVA_OPTIONS, which are parsed after command line flags and applied to
             // the global VM args
-            log.info("Java VM arguments: {}", String.join(" ", runtime.getInputArguments()));
+            log.info("Java VM arguments: {}", RuneLite.formatJvmArgumentsForLog(runtime.getInputArguments()));
 
             final long start = System.currentTimeMillis();
             injector = Guice.createInjector(new RuneLiteModule(

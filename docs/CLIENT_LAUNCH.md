@@ -107,9 +107,11 @@ java -jar client-<version>-SNAPSHOT-shaded.jar \
 
 **注意：**
 - 这种方式跳过传统的用户名/密码认证，直接使用已有的会话令牌登录
+- `--session-id` 和 `--character-id` 必须同时提供
+- 凭据只通过临时文件传给 injected-client，客户端读取后立即删除
 - Session ID 有过期时间，需要定期刷新
 - **不要在命令行历史中暴露真实的 session ID**，建议使用环境变量或配置文件
-- Session ID 在日志中会自动脱敏（只显示前 8 位）
+- Session ID 和 Character ID 在启动日志中会完全脱敏
 
 **组合使用多个参数：**
 ```bash

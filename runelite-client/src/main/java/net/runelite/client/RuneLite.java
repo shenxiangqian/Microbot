@@ -82,10 +82,10 @@ import net.runelite.client.externalplugins.ExternalPluginManager;
 import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.externalplugins.MicrobotPluginManager;
-import net.runelite.client.plugins.microbot.util.security.DirectSessionLogin;
 import net.runelite.client.proxy.ProxyChecker;
 import net.runelite.client.proxy.ProxyConfiguration;
 import net.runelite.client.rs.ClientLoader;
+import net.runelite.client.rs.JagexSessionCredentials;
 import net.runelite.client.ui.ClientUI;
 import net.runelite.client.ui.DrawManager;
 import net.runelite.client.ui.FatalErrorDialog;
@@ -148,6 +148,11 @@ public class RuneLite
 	public static final File FONTS_DIR = new File(RuneLite.RUNELITE_DIR, "fonts");
 
 	private static final int MAX_OKHTTP_CACHE_SIZE = 20 * 1024 * 1024; // 20mb
+	private static final Set<String> SENSITIVE_ARGUMENTS = Set.of(
+		"session-id", "character-id", "proxy", "proxy-user", "proxy-pass");
+	private static final Set<String> SENSITIVE_SYSTEM_PROPERTIES = Set.of(
+		"user.home", "runelite.credentials.path", "JX_SESSION_ID", "JX_CHARACTER_ID",
+		"JX_ACCESS_TOKEN", "JX_REFRESH_TOKEN");
 	public static String USER_AGENT = "RuneLite/" + RuneLiteProperties.getVersion();
 
 	@Getter
@@ -266,6 +271,10 @@ public class RuneLite
 		// Extract session-id and character-id for direct session login
 		String sessionId = options.has(sessionIdOpt) ? options.valueOf(sessionIdOpt) : null;
 		String characterId = options.has(characterIdOpt) ? options.valueOf(characterIdOpt) : null;
+		if (options.has(sessionIdOpt) != options.has(characterIdOpt))
+		{
+			throw new IllegalArgumentException("--session-id and --character-id must be provided together");
+		}
 
 		// Extract FPS setting
 		Integer targetFps = options.has(fpsOpt) ? options.valueOf(fpsOpt) : null;
@@ -357,7 +366,14 @@ public class RuneLite
 		try
 		{
 			final RuntimeConfigLoader runtimeConfigLoader = new RuntimeConfigLoader(okHttpClient);
-			final ClientLoader clientLoader = new ClientLoader(okHttpClient, runtimeConfigLoader, (String) options.valueOf("jav_config"));
+			if (sessionId != null)
+			{
+				log.info("Session-based login parameters detected");
+			}
+			final ClientLoader clientLoader = new ClientLoader(
+				okHttpClient,
+				runtimeConfigLoader,
+				(String) options.valueOf("jav_config"));
 
 			new Thread(() ->
 			{
@@ -384,37 +400,35 @@ public class RuneLite
 
 			log.info("RuneLite {} (launcher version {}) starting up, args: {}",
 				RuneLiteProperties.getVersion(), MoreObjects.firstNonNull(RuneLiteProperties.getLauncherVersion(), "unknown"),
-				args.length == 0 ? "none" : String.join(" ", args));
+				formatArgumentsForLog(args));
 
 			final RuntimeMXBean runtime = ManagementFactory.getRuntimeMXBean();
 			// This includes arguments from _JAVA_OPTIONS, which are parsed after command line flags and applied to
 			// the global VM args
-			log.info("Java VM arguments: {}", String.join(" ", runtime.getInputArguments()));
+			log.info("Java VM arguments: {}", formatJvmArgumentsForLog(runtime.getInputArguments()));
 
 			final long start = System.currentTimeMillis();
 
-			// Set session credentials for direct session login if provided
-			if (sessionId != null && characterId != null) {
-				log.info("Session-based login parameters detected");
-				DirectSessionLogin.setSessionCredentials(sessionId, characterId);
+			try (JagexSessionCredentials ignored = JagexSessionCredentials.install(
+				RUNELITE_DIR.toPath(), sessionId, characterId))
+			{
+				injector = Guice.createInjector(new RuneLiteModule(
+					okHttpClient,
+					clientLoader,
+					runtimeConfigLoader,
+					developerMode,
+					options.has("safe-mode"),
+					options.has("disable-telemetry"),
+					options.has("disable-walker-update"),
+					options.valueOf(sessionfile),
+					(String) options.valueOf("profile"),
+					options.has(insecureWriteCredentials),
+					options.has("noupdate"),
+					windowTitleOverride
+				));
+
+				injector.getInstance(RuneLite.class).start(startupScript);
 			}
-
-			injector = Guice.createInjector(new RuneLiteModule(
-				okHttpClient,
-				clientLoader,
-				runtimeConfigLoader,
-				developerMode,
-				options.has("safe-mode"),
-				options.has("disable-telemetry"),
-				options.has("disable-walker-update"),
-				options.valueOf(sessionfile),
-				(String) options.valueOf("profile"),
-				options.has(insecureWriteCredentials),
-				options.has("noupdate"),
-				windowTitleOverride
-			));
-
-			injector.getInstance(RuneLite.class).start(startupScript);
 
 			// Apply --fps throttle independently of the FpsPlugin
 			if (targetFps != null)
@@ -457,6 +471,78 @@ public class RuneLite
 				SplashScreen.stop();
 			}
 		}
+	}
+
+	@VisibleForTesting
+	static String formatArgumentsForLog(String[] args)
+	{
+		if (args.length == 0)
+		{
+			return "none";
+		}
+
+		List<String> safeArguments = new ArrayList<>(args.length);
+		boolean redactNext = false;
+		for (String argument : args)
+		{
+			if (redactNext)
+			{
+				safeArguments.add("***");
+				redactNext = false;
+				continue;
+			}
+
+			int prefixLength = argument.startsWith("--") ? 2 : argument.startsWith("-") ? 1 : 0;
+			String option = argument.substring(prefixLength);
+			int equalsIndex = option.indexOf('=');
+			String optionName = equalsIndex >= 0 ? option.substring(0, equalsIndex) : option;
+			if (!SENSITIVE_ARGUMENTS.contains(optionName))
+			{
+				safeArguments.add(argument);
+				continue;
+			}
+
+			if (equalsIndex >= 0)
+			{
+				int argumentEqualsIndex = prefixLength + equalsIndex;
+				safeArguments.add(argument.substring(0, argumentEqualsIndex + 1) + "***");
+			}
+			else
+			{
+				safeArguments.add(argument);
+				redactNext = true;
+			}
+		}
+
+		return String.join(" ", safeArguments);
+	}
+
+	@VisibleForTesting
+	static String formatJvmArgumentsForLog(List<String> arguments)
+	{
+		List<String> safeArguments = new ArrayList<>(arguments.size());
+		for (String argument : arguments)
+		{
+			if (!argument.startsWith("-D"))
+			{
+				safeArguments.add(argument);
+				continue;
+			}
+
+			int equalsIndex = argument.indexOf('=');
+			String propertyName = equalsIndex >= 0
+				? argument.substring(2, equalsIndex)
+				: argument.substring(2);
+			if (equalsIndex >= 0 && SENSITIVE_SYSTEM_PROPERTIES.contains(propertyName))
+			{
+				safeArguments.add(argument.substring(0, equalsIndex + 1) + "***");
+			}
+			else
+			{
+				safeArguments.add(argument);
+			}
+		}
+		return String.join(" ", safeArguments);
 	}
 
     private static void validateJavaVersion() {
