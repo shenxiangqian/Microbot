@@ -5,7 +5,9 @@ import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.api.events.*;
+import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
+import net.runelite.api.widgets.Widget;
 import net.runelite.client.RuneLiteProperties;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
@@ -138,6 +140,7 @@ public class MicrobotPlugin extends Plugin
 	@Override
 	protected void startUp() throws AWTException
 	{
+		Microbot.clearLastGameTickTime();
 		log.info("Microbot: {} - {}", RuneLiteProperties.getMicrobotVersion(), RuneLiteProperties.getMicrobotCommit());
 		log.info("JVM: {} {}", System.getProperty("java.vendor"), System.getProperty("java.runtime.version"));
 
@@ -208,6 +211,7 @@ public class MicrobotPlugin extends Plugin
 
 	protected void shutDown()
 	{
+		Microbot.clearLastGameTickTime();
 		scriptToolbarController.shutDown();
 		overlayManager.remove(microbotOverlay);
 		overlayManager.remove(gembagOverlay);
@@ -307,6 +311,10 @@ public class MicrobotPlugin extends Plugin
 	@Subscribe
 	public void onGameStateChanged(GameStateChanged gameStateChanged)
 	{
+	   if (gameStateChanged.getGameState() != GameState.LOGGED_IN)
+	   {
+		   Microbot.clearLastGameTickTime();
+	   }
 		
 	   if (gameStateChanged.getGameState() == GameState.LOGGED_IN)
 	   {
@@ -533,6 +541,10 @@ public class MicrobotPlugin extends Plugin
 	public void onWidgetLoaded(WidgetLoaded event)
 	{
 		Rs2RunePouch.onWidgetLoaded(event);
+		if (event.getGroupId() == InterfaceID.WELCOME_SCREEN)
+		{
+			Microbot.clearLastGameTickTime();
+		}
 		
 		// Mark that widget layout has changed for cache invalidation
 		widgetLayoutChanged = true;
@@ -603,8 +615,29 @@ public class MicrobotPlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
+		Client client = Microbot.getClient();
+		if (isInGame(client))
+		{
+			Microbot.recordGameTick();
+		}
+		else
+		{
+			Microbot.clearLastGameTickTime();
+		}
+
 		// Start Leagues teleport calibration ASAP after login (non-blocking; prompts for consent once).
 		Rs2LeaguesTransport.tickLeaguesCalibration();
+	}
+
+	static boolean isInGame(Client client)
+	{
+		if (client == null || client.getGameState() != GameState.LOGGED_IN || client.getLocalPlayer() == null)
+		{
+			return false;
+		}
+
+		Widget playWidget = client.getWidget(InterfaceID.WelcomeScreen.PLAY);
+		return playWidget == null || playWidget.isHidden();
 	}
 
 	@Subscribe(priority = 100)

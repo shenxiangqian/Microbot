@@ -183,6 +183,10 @@ public class Microbot {
     @Setter
     private static GameState lastGameState = null;
 
+    private static volatile long lastGameTickEpochMillis;
+    private static volatile long lastGameTickNanos;
+    private static volatile boolean lastGameTickAvailable;
+
     public static boolean cantReachTarget = false;
     public static boolean cantHopWorld = false;
 
@@ -231,6 +235,40 @@ public class Microbot {
      */
     public static Duration getLoginTime() {
         return LoginManager.getLoginDuration();
+    }
+
+    /**
+     * Returns the local wall-clock time at which the most recent in-game {@code GameTick} was received.
+     *
+     * @return the epoch time in milliseconds, or {@code 0L} while outside the game
+     */
+    public static long getLastGameTickTime() {
+        return lastGameTickAvailable ? lastGameTickEpochMillis : 0L;
+    }
+
+    /**
+     * Returns the elapsed time since the most recent in-game {@code GameTick}.
+     *
+     * @return elapsed milliseconds, or {@code 0L} while outside the game
+     */
+    public static long getMillisSinceLastGameTick() {
+        long tickNanos = lastGameTickNanos;
+        if (!lastGameTickAvailable || tickNanos == 0L) {
+            return 0L;
+        }
+        return TimeUnit.NANOSECONDS.toMillis(Math.max(0L, System.nanoTime() - tickNanos));
+    }
+
+    static void recordGameTick() {
+        lastGameTickEpochMillis = System.currentTimeMillis();
+        lastGameTickNanos = System.nanoTime();
+        lastGameTickAvailable = true;
+    }
+
+    static void clearLastGameTickTime() {
+        lastGameTickAvailable = false;
+        lastGameTickEpochMillis = 0L;
+        lastGameTickNanos = 0L;
     }
 
     /**
