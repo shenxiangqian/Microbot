@@ -61,6 +61,15 @@ public class KeyManager
 		}
 	}
 
+	public void registerKeyListener(int position, KeyListener keyListener)
+	{
+		if (!keyListeners.contains(keyListener))
+		{
+			log.debug("Registering key listener at position {}: {}", position, keyListener);
+			keyListeners.add(position, keyListener);
+		}
+	}
+
 	public void unregisterKeyListener(KeyListener keyListener)
 	{
 		final boolean unregistered = keyListeners.remove(keyListener);

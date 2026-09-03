@@ -9,6 +9,9 @@ import net.runelite.client.config.ConfigProfile;
 import net.runelite.client.config.ProfileManager;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.util.keyboard.Rs2Keyboard;
+import net.runelite.client.plugins.microbot.util.security.login.LoginResponseSnapshot;
+import net.runelite.client.plugins.microbot.util.security.login.Rs2LoginResponse;
+import net.runelite.client.plugins.microbot.util.security.login.Rs2LoginStatus;
 import net.runelite.client.util.WorldUtil;
 import net.runelite.http.api.worlds.World;
 import net.runelite.http.api.worlds.WorldRegion;
@@ -81,6 +84,16 @@ public final class LoginManager {
         Client client = Microbot.getClient();
         return client != null && client.getGameState() == GameState.LOGGED_IN;
     }
+
+	/** Returns the current detailed login status and its supporting evidence. */
+	public static LoginResponseSnapshot getLoginResponseSnapshot() {
+		return Rs2LoginResponse.getSnapshot();
+	}
+
+	/** Returns the current detailed login status. */
+	public static Rs2LoginStatus getDetailedLoginStatus() {
+		return Rs2LoginResponse.getStatus();
+	}
 
     /**
      * Returns true if a login attempt is currently being processed.

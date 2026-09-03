@@ -3,6 +3,7 @@ package net.runelite.client.plugins.microbot.util.keyboard;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.util.Global;
 import net.runelite.client.plugins.microbot.util.math.Rs2Random;
+import net.runelite.client.plugins.microbot.util.mouse.BotEventGuard;
 
 import java.awt.*;
 import java.awt.event.KeyEvent;
@@ -52,23 +53,35 @@ public class Rs2Keyboard
 	 */
 	private static void dispatchKeyEvent(int id, int keyCode, char keyChar, int delay)
 	{
-		Canvas canvas = getCanvas();
+		dispatchKeyEvent(getCanvas(), id, keyCode, keyChar, delay);
+	}
+
+	static void dispatchKeyEvent(Canvas canvas, int id, int keyCode, char keyChar, int delay)
+	{
 		KeyEvent event = new KeyEvent(canvas, id, System.currentTimeMillis() + delay, 0, keyCode, keyChar);
 		KeyListener[] listeners = canvas.getKeyListeners();
-		for (KeyListener l : listeners)
+		BotEventGuard.begin();
+		try
 		{
-			switch (id)
+			for (KeyListener l : listeners)
 			{
-				case KeyEvent.KEY_TYPED:
-					l.keyTyped(event);
-					break;
-				case KeyEvent.KEY_PRESSED:
-					l.keyPressed(event);
-					break;
-				case KeyEvent.KEY_RELEASED:
-					l.keyReleased(event);
-					break;
+				switch (id)
+				{
+					case KeyEvent.KEY_TYPED:
+						l.keyTyped(event);
+						break;
+					case KeyEvent.KEY_PRESSED:
+						l.keyPressed(event);
+						break;
+					case KeyEvent.KEY_RELEASED:
+						l.keyReleased(event);
+						break;
+				}
 			}
+		}
+		finally
+		{
+			BotEventGuard.end();
 		}
 	}
 

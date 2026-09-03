@@ -674,8 +674,6 @@ public class RuneLite
 		pluginManager.loadSideLoadPlugins();
 		externalPluginManager.loadExternalPlugins();
 
-        microbotPluginManager.loadSideLoadPlugins();
-
         SplashScreen.stage(.70, null, "Finalizing configuration");
 
 		// Plugins have provided their config, so set default config
@@ -712,6 +710,9 @@ public class RuneLite
 		SplashScreen.stop();
 
 		clientUI.show();
+
+		// Load Microbot sideload plugins after UI is shown
+		microbotPluginManager.loadSideLoadPlugins();
 
 		if (disableSounds)
 		{

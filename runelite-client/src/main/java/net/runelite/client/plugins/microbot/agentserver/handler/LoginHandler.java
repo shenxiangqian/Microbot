@@ -6,41 +6,41 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.client.config.ConfigProfile;
-import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.util.security.LoginManager;
+import net.runelite.client.plugins.microbot.util.security.login.LoginResponseSnapshot;
+import net.runelite.client.plugins.microbot.util.security.login.Rs2LoginResponse;
+import net.runelite.client.plugins.microbot.util.security.login.Rs2LoginStatus;
+import net.runelite.client.plugins.microbot.util.security.login.Rs2LoginStatusSource;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
+
+import static net.runelite.client.plugins.microbot.util.Global.sleepUntil;
 
 @Slf4j
 public class LoginHandler extends AgentHandler {
 
-	private static final int LOGIN_INDEX_AUTH_FAILURE = 3;
-	private static final int LOGIN_INDEX_INVALID_CREDENTIALS = 4;
-	private static final int LOGIN_INDEX_BANNED = 14;
-	private static final int LOGIN_INDEX_DISCONNECTED = 24;
-	private static final int LOGIN_INDEX_NON_MEMBER = 34;
-
-	private static final Set<Integer> FATAL_LOGIN_INDICES = Set.of(
-			LOGIN_INDEX_AUTH_FAILURE,
-			LOGIN_INDEX_INVALID_CREDENTIALS,
-			LOGIN_INDEX_BANNED,
-			LOGIN_INDEX_NON_MEMBER
-	);
-
 	private static final int DEFAULT_TIMEOUT_SECONDS = 30;
 	private static final int MAX_TIMEOUT_SECONDS = 120;
-	private static final int POLL_INTERVAL_MS = 600;
 	private static final int LOGIN_STABILIZATION_MS = 3000;
-	private static final int STABILIZATION_POLL_MS = 300;
+	private static final int REPEATED_RESPONSE_GRACE_MS = 1500;
 
 	private final Client client;
+	private final Supplier<LoginResponseSnapshot> loginSnapshotSupplier;
 
 	public LoginHandler(Gson gson, Client client) {
+		this(gson, client, () -> Rs2LoginResponse.getSnapshot(client));
+	}
+
+	LoginHandler(Gson gson, Client client, Supplier<LoginResponseSnapshot> loginSnapshotSupplier) {
 		super(gson);
 		this.client = client;
+		this.loginSnapshotSupplier = loginSnapshotSupplier;
 	}
 
 	@Override
@@ -67,24 +67,17 @@ public class LoginHandler extends AgentHandler {
 
 	private Map<String, Object> buildStatusMap() {
 		Map<String, Object> result = new LinkedHashMap<>();
+		LoginResponseSnapshot snapshot = getLoginSnapshot();
 
-		GameState gameState = client.getGameState();
-		result.put("loggedIn", Microbot.isLoggedIn());
+		GameState gameState = snapshot.getGameState();
+		result.put("loggedIn", snapshot.getStatus() == Rs2LoginStatus.LOGGED_IN);
 		result.put("gameState", gameState.name());
 		result.put("loginAttemptActive", LoginManager.isLoginAttemptActive());
+		putDetailedStatus(result, snapshot);
 
-		if (Microbot.isLoggedIn()) {
+		if (snapshot.getStatus() == Rs2LoginStatus.LOGGED_IN) {
 			long durationMs = LoginManager.getLoginDuration().toMillis();
 			result.put("loginDurationMs", durationMs);
-		}
-
-		if (gameState == GameState.LOGIN_SCREEN) {
-			int loginIndex = client.getLoginIndex();
-			result.put("loginIndex", loginIndex);
-			String loginError = describeLoginIndex(loginIndex);
-			if (loginError != null) {
-				result.put("loginError", loginError);
-			}
 		}
 
 		try {
@@ -106,11 +99,13 @@ public class LoginHandler extends AgentHandler {
 	}
 
 	private void handleLogin(HttpExchange exchange) throws IOException {
-		if (Microbot.isLoggedIn()) {
+		LoginResponseSnapshot initialSnapshot = getLoginSnapshot();
+		if (initialSnapshot.getStatus() == Rs2LoginStatus.LOGGED_IN) {
 			Map<String, Object> result = new LinkedHashMap<>();
 			result.put("success", true);
 			result.put("message", "Already logged in");
 			result.put("currentWorld", client.getWorld());
+			putDetailedStatus(result, initialSnapshot);
 			sendJson(exchange, 200, result);
 			return;
 		}
@@ -171,117 +166,136 @@ public class LoginHandler extends AgentHandler {
 			return;
 		}
 
-		LoginResult loginResult = waitForLoginResult(timeoutSeconds);
+		LoginResult loginResult = waitForLoginResult(timeoutSeconds, initialSnapshot);
 
 		Map<String, Object> result = new LinkedHashMap<>();
 		result.put("success", loginResult.success);
 		result.put("message", loginResult.message);
 		result.put("currentWorld", client.getWorld());
 
-		if (loginResult.loginIndex > 0) {
-			result.put("loginIndex", loginResult.loginIndex);
-			String errorDesc = describeLoginIndex(loginResult.loginIndex);
-			if (errorDesc != null) {
-				result.put("loginError", errorDesc);
-			}
-		}
+		putDetailedStatus(result, loginResult.snapshot);
 
 		sendJson(exchange, loginResult.success ? 200 : 401, result);
 	}
 
-	private LoginResult waitForLoginResult(int timeoutSeconds) {
-		long deadline = System.currentTimeMillis() + (timeoutSeconds * 1000L);
+	private LoginResult waitForLoginResult(int timeoutSeconds, LoginResponseSnapshot initialSnapshot) {
+		long startedAt = System.currentTimeMillis();
+		AtomicBoolean sawProgress = new AtomicBoolean(false);
+		AtomicReference<Long> loggedInSince = new AtomicReference<>();
+		AtomicReference<LoginResult> outcome = new AtomicReference<>();
+		AtomicReference<LoginResponseSnapshot> latest = new AtomicReference<>(initialSnapshot);
 
-		while (System.currentTimeMillis() < deadline) {
-			if (Microbot.isLoggedIn()) {
-				LoginResult stable = waitForStableLogin();
-				if (stable != null) {
-					return stable;
+		sleepUntil(() -> {
+			LoginResponseSnapshot snapshot = getLoginSnapshot();
+			latest.set(snapshot);
+			Rs2LoginStatus status = snapshot.getStatus();
+
+			if (status == Rs2LoginStatus.CONNECTING_TO_SERVER) {
+				sawProgress.set(true);
+				loggedInSince.set(null);
+				return false;
+			}
+			if (status == Rs2LoginStatus.LOGGED_IN) {
+				sawProgress.set(true);
+				Long stableSince = loggedInSince.updateAndGet(value ->
+					value == null ? System.currentTimeMillis() : value);
+				if (System.currentTimeMillis() - stableSince >= LOGIN_STABILIZATION_MS) {
+					outcome.set(LoginResult.ok("Login successful", snapshot));
+					return true;
 				}
-				continue;
+				return false;
 			}
 
-			GameState gs = client.getGameState();
-			if (gs == GameState.LOGIN_SCREEN) {
-				int idx = client.getLoginIndex();
-				if (FATAL_LOGIN_INDICES.contains(idx)) {
-					String desc = describeLoginIndex(idx);
-					return LoginResult.fail("Login failed: " + desc, idx);
-				}
+			loggedInSince.set(null);
+			if (status.isTerminal()
+				&& (sawProgress.get()
+					|| !sameResponse(initialSnapshot, snapshot)
+					|| System.currentTimeMillis() - startedAt >= REPEATED_RESPONSE_GRACE_MS)) {
+				outcome.set(LoginResult.fail("Login failed: " + describe(snapshot), snapshot));
+				return true;
 			}
+			return false;
+		}, timeoutSeconds * 1000);
 
-			try {
-				Thread.sleep(POLL_INTERVAL_MS);
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
-				return LoginResult.fail("Login interrupted", 0);
-			}
+		LoginResult result = outcome.get();
+		if (result != null) {
+			return result;
 		}
-
-		return LoginResult.fail("Login timed out after " + timeoutSeconds + "s", 0);
+		if (Thread.currentThread().isInterrupted()) {
+			return LoginResult.fail("Login interrupted", withStatus(latest.get(), Rs2LoginStatus.FAILED_TO_LOGIN));
+		}
+		return LoginResult.fail(
+			"Login timed out after " + timeoutSeconds + "s",
+			withStatus(latest.get(), Rs2LoginStatus.CONNECTION_TIMED_OUT));
 	}
 
-	private LoginResult waitForStableLogin() {
-		long stabilizeDeadline = System.currentTimeMillis() + LOGIN_STABILIZATION_MS;
-
-		while (System.currentTimeMillis() < stabilizeDeadline) {
-			if (!Microbot.isLoggedIn()) {
-				GameState gs = client.getGameState();
-				if (gs == GameState.LOGIN_SCREEN) {
-					int idx = client.getLoginIndex();
-					if (FATAL_LOGIN_INDICES.contains(idx)) {
-						String desc = describeLoginIndex(idx);
-						return LoginResult.fail("Login failed: " + desc, idx);
-					}
-				}
-				return null;
-			}
-
-			try {
-				Thread.sleep(STABILIZATION_POLL_MS);
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
-				return LoginResult.fail("Login interrupted", 0);
-			}
+	private LoginResponseSnapshot getLoginSnapshot() {
+		try {
+			return loginSnapshotSupplier.get();
+		} catch (RuntimeException e) {
+			log.debug("Failed to capture detailed login status", e);
+			return Rs2LoginResponse.classifySnapshot(
+				GameState.UNKNOWN, -1, java.util.Collections.emptyList(), false, "unavailable");
 		}
-
-		return LoginResult.ok("Login successful");
 	}
 
-	private static String describeLoginIndex(int loginIndex) {
-		switch (loginIndex) {
-			case LOGIN_INDEX_AUTH_FAILURE:
-				return "Authentication failed - invalid credentials";
-			case LOGIN_INDEX_INVALID_CREDENTIALS:
-				return "Invalid credentials";
-			case LOGIN_INDEX_BANNED:
-				return "Account is banned";
-			case LOGIN_INDEX_DISCONNECTED:
-				return "Disconnected from server";
-			case LOGIN_INDEX_NON_MEMBER:
-				return "Non-member account cannot login to members world";
-			default:
-				return null;
+	private static boolean sameResponse(LoginResponseSnapshot first, LoginResponseSnapshot second) {
+		return first.getStatus() == second.getStatus()
+			&& first.getResponseText().equals(second.getResponseText());
+	}
+
+	private static LoginResponseSnapshot withStatus(
+		LoginResponseSnapshot snapshot,
+		Rs2LoginStatus status) {
+		return new LoginResponseSnapshot(
+			status,
+			snapshot.getGameState(),
+			snapshot.getLoginIndex(),
+			snapshot.getResponseLines(),
+			Rs2LoginStatusSource.FALLBACK,
+			Instant.now(),
+			snapshot.isResponseTextAvailable(),
+			snapshot.getReflectionMappingVersion());
+	}
+
+	private static String describe(LoginResponseSnapshot snapshot) {
+		return snapshot.hasResponseText() ? snapshot.getResponseText() : snapshot.getStatus().name();
+	}
+
+	private static void putDetailedStatus(Map<String, Object> result, LoginResponseSnapshot snapshot) {
+		result.put("loginStatus", snapshot.getStatus().name());
+		result.put("loginStatusSeverity", snapshot.getStatus().getSeverity());
+		result.put("loginStatusSource", snapshot.getSource().name());
+		result.put("loginResponseMappingVersion", snapshot.getReflectionMappingVersion());
+		result.put("responseTextAvailable", snapshot.isResponseTextAvailable());
+		if (snapshot.getLoginIndex() >= 0) {
+			result.put("loginIndex", snapshot.getLoginIndex());
+		}
+		if (snapshot.hasResponseText()) {
+			result.put("loginResponseLines", snapshot.getResponseLines());
+		}
+		if (snapshot.getStatus().isTerminal()) {
+			result.put("loginError", describe(snapshot));
 		}
 	}
 
 	private static class LoginResult {
 		final boolean success;
 		final String message;
-		final int loginIndex;
+		final LoginResponseSnapshot snapshot;
 
-		LoginResult(boolean success, String message, int loginIndex) {
+		LoginResult(boolean success, String message, LoginResponseSnapshot snapshot) {
 			this.success = success;
 			this.message = message;
-			this.loginIndex = loginIndex;
+			this.snapshot = snapshot;
 		}
 
-		static LoginResult ok(String message) {
-			return new LoginResult(true, message, 0);
+		static LoginResult ok(String message, LoginResponseSnapshot snapshot) {
+			return new LoginResult(true, message, snapshot);
 		}
 
-		static LoginResult fail(String message, int loginIndex) {
-			return new LoginResult(false, message, loginIndex);
+		static LoginResult fail(String message, LoginResponseSnapshot snapshot) {
+			return new LoginResult(false, message, snapshot);
 		}
 	}
 }

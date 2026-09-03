@@ -524,6 +524,7 @@ tasks.withType<Test> {
         enabled = false
     }
     systemProperty("glslang.path", providers.gradleProperty("glslangPath").getOrElse(""))
+    systemProperty("runelite.injected-client.version", injectedClientVersionProvider.get())
 }
 
 tasks.javadoc {

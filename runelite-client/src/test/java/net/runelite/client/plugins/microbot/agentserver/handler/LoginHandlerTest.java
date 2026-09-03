@@ -6,7 +6,9 @@ import com.google.gson.reflect.TypeToken;
 import com.sun.net.httpserver.HttpServer;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
+import net.runelite.client.plugins.microbot.util.security.login.Rs2LoginResponse;
 import org.junit.AfterClass;
+import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -20,9 +22,12 @@ import java.net.HttpURLConnection;
 import java.net.InetSocketAddress;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.mock;
@@ -37,21 +42,39 @@ public class LoginHandlerTest {
 	private static HttpServer server;
 	private static int port;
 	private static Client mockClient;
+	private static AtomicReference<List<String>> responseLines;
 
 	@BeforeClass
 	public static void startServer() throws IOException {
 		mockClient = mock(Client.class);
 		when(mockClient.getGameState()).thenReturn(GameState.LOGIN_SCREEN);
 		when(mockClient.getWorld()).thenReturn(360);
+		responseLines = new AtomicReference<>(Collections.emptyList());
 
 		server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
 		server.setExecutor(Executors.newFixedThreadPool(2));
 
-		LoginHandler handler = new LoginHandler(GSON, mockClient);
+		LoginHandler handler = new LoginHandler(GSON, mockClient, () -> {
+			GameState gameState = mockClient.getGameState();
+			int loginIndex = gameState == GameState.LOGIN_SCREEN
+				|| gameState == GameState.LOGIN_SCREEN_AUTHENTICATOR
+				? mockClient.getLoginIndex()
+				: -1;
+			return Rs2LoginResponse.classifySnapshot(
+				gameState, loginIndex, responseLines.get(), true, "test");
+		});
 		server.createContext(handler.getPath(), handler);
 		server.start();
 
 		port = server.getAddress().getPort();
+	}
+
+	@Before
+	public void resetLoginState() {
+		when(mockClient.getGameState()).thenReturn(GameState.LOGIN_SCREEN);
+		when(mockClient.getLoginIndex()).thenReturn(0);
+		when(mockClient.getWorld()).thenReturn(360);
+		responseLines.set(Collections.emptyList());
 	}
 
 	@AfterClass
@@ -72,6 +95,9 @@ public class LoginHandlerTest {
 		assertNotNull(resp.body.get("gameState"));
 		assertNotNull(resp.body.get("loggedIn"));
 		assertNotNull(resp.body.get("currentWorld"));
+		assertNotNull(resp.body.get("loginStatus"));
+		assertNotNull(resp.body.get("loginStatusSeverity"));
+		assertNotNull(resp.body.get("loginStatusSource"));
 	}
 
 	@Test
@@ -114,32 +140,38 @@ public class LoginHandlerTest {
 	public void testGetStatusDetectsNonMemberError() throws IOException {
 		when(mockClient.getGameState()).thenReturn(GameState.LOGIN_SCREEN);
 		when(mockClient.getLoginIndex()).thenReturn(34);
+		setResponse("You need a members' account to use this world.");
 
 		Response resp = get("/login");
 		assertEquals(200, resp.code);
 		assertEquals(34.0, resp.body.get("loginIndex"));
-		assertEquals("Non-member account cannot login to members world", resp.body.get("loginError"));
+		assertEquals("MEMBERS_WORLD", resp.body.get("loginStatus"));
+		assertEquals("You need a members' account to use this world.", resp.body.get("loginError"));
 	}
 
 	@Test
-	public void testGetStatusDetectsBan() throws IOException {
+	public void testGetStatusDetectsDisabledAccount() throws IOException {
 		when(mockClient.getGameState()).thenReturn(GameState.LOGIN_SCREEN);
 		when(mockClient.getLoginIndex()).thenReturn(14);
+		setResponse("Your account has been disabled.");
 
 		Response resp = get("/login");
 		assertEquals(200, resp.code);
 		assertEquals(14.0, resp.body.get("loginIndex"));
-		assertEquals("Account is banned", resp.body.get("loginError"));
+		assertEquals("DISABLED", resp.body.get("loginStatus"));
+		assertEquals("Your account has been disabled.", resp.body.get("loginError"));
 	}
 
 	@Test
 	public void testGetStatusDetectsAuthFailure() throws IOException {
 		when(mockClient.getGameState()).thenReturn(GameState.LOGIN_SCREEN);
 		when(mockClient.getLoginIndex()).thenReturn(4);
+		setResponse("Incorrect username or password.");
 
 		Response resp = get("/login");
 		assertEquals(200, resp.code);
-		assertEquals("Invalid credentials", resp.body.get("loginError"));
+		assertEquals("INVALID_LOGIN", resp.body.get("loginStatus"));
+		assertEquals("Incorrect username or password.", resp.body.get("loginError"));
 	}
 
 	@Test
@@ -153,6 +185,35 @@ public class LoginHandlerTest {
 	}
 
 	@Test
+	public void testGetStatusClearsStaleErrorAfterReturningToRootLoginScreen() throws IOException {
+		when(mockClient.getGameState()).thenReturn(GameState.LOGIN_SCREEN);
+		when(mockClient.getLoginIndex()).thenReturn(3);
+		setResponse("Incorrect username or password.");
+		assertEquals("INVALID_LOGIN", get("/login").body.get("loginStatus"));
+
+		when(mockClient.getLoginIndex()).thenReturn(0);
+		Response resp = get("/login");
+
+		assertEquals("LOGIN_SCREEN", resp.body.get("loginStatus"));
+		assertNull(resp.body.get("loginError"));
+		assertNull(resp.body.get("loginResponseLines"));
+	}
+
+	@Test
+	public void testGetStatusDetectsNonMemberSkillTotalRequirement() throws IOException {
+		when(mockClient.getGameState()).thenReturn(GameState.LOGIN_SCREEN);
+		when(mockClient.getLoginIndex()).thenReturn(3);
+		setResponse("You need a total of 750", "in non-member skills", "to play on this world.");
+
+		Response resp = get("/login");
+
+		assertEquals("TOTAL_LEVEL", resp.body.get("loginStatus"));
+		assertEquals("RESPONSE_TEXT", resp.body.get("loginStatusSource"));
+		assertEquals("You need a total of 750 in non-member skills to play on this world.",
+			resp.body.get("loginError"));
+	}
+
+	@Test
 	public void testGetStatusNoLoginIndexWhenLoggedIn() throws IOException {
 		when(mockClient.getGameState()).thenReturn(GameState.LOGGED_IN);
 
@@ -160,6 +221,7 @@ public class LoginHandlerTest {
 		assertEquals(200, resp.code);
 		assertNull(resp.body.get("loginIndex"));
 		assertNull(resp.body.get("loginError"));
+		assertEquals("LOGGED_IN", resp.body.get("loginStatus"));
 	}
 
 	// ==========================================
@@ -266,6 +328,7 @@ public class LoginHandlerTest {
 		when(mockClient.getGameState()).thenReturn(GameState.LOGIN_SCREEN);
 		when(mockClient.getLoginIndex()).thenReturn(34);
 		when(mockClient.getWorld()).thenReturn(360);
+		setResponse("You need a members' account to use this world.");
 
 		Response resp = get("/login");
 
@@ -273,7 +336,8 @@ public class LoginHandlerTest {
 		assertEquals(false, resp.body.get("loggedIn"));
 		assertEquals("LOGIN_SCREEN", resp.body.get("gameState"));
 		assertEquals(34.0, resp.body.get("loginIndex"));
-		assertEquals("Non-member account cannot login to members world", resp.body.get("loginError"));
+		assertEquals("MEMBERS_WORLD", resp.body.get("loginStatus"));
+		assertEquals("You need a members' account to use this world.", resp.body.get("loginError"));
 		assertEquals(360.0, resp.body.get("currentWorld"));
 	}
 
@@ -282,6 +346,7 @@ public class LoginHandlerTest {
 		when(mockClient.getGameState()).thenReturn(GameState.LOGIN_SCREEN);
 		when(mockClient.getLoginIndex()).thenReturn(34);
 		when(mockClient.getWorld()).thenReturn(360);
+		setResponse("You need a members' account to use this world.");
 
 		post("/login", Map.of("wait", false, "world", 360));
 
@@ -290,16 +355,18 @@ public class LoginHandlerTest {
 		assertEquals(200, status.code);
 		assertEquals(false, status.body.get("loggedIn"));
 		assertEquals(34.0, status.body.get("loginIndex"));
-		assertEquals("Non-member account cannot login to members world", status.body.get("loginError"));
+		assertEquals("MEMBERS_WORLD", status.body.get("loginStatus"));
+		assertEquals("You need a members' account to use this world.", status.body.get("loginError"));
 	}
 
 	@Test
 	public void testNonMemberDetection_errorClearsWhenLoggedIn() throws IOException {
 		when(mockClient.getGameState()).thenReturn(GameState.LOGIN_SCREEN);
 		when(mockClient.getLoginIndex()).thenReturn(34);
+		setResponse("You need a members' account to use this world.");
 
 		Response errorResp = get("/login");
-		assertEquals("Non-member account cannot login to members world", errorResp.body.get("loginError"));
+		assertEquals("MEMBERS_WORLD", errorResp.body.get("loginStatus"));
 
 		when(mockClient.getGameState()).thenReturn(GameState.LOGGED_IN);
 
@@ -313,24 +380,29 @@ public class LoginHandlerTest {
 		when(mockClient.getGameState()).thenReturn(GameState.LOGIN_SCREEN);
 
 		when(mockClient.getLoginIndex()).thenReturn(34);
+		setResponse("You need a members' account to use this world.");
 		Response nonMember = get("/login");
-		assertEquals("Non-member account cannot login to members world", nonMember.body.get("loginError"));
+		assertEquals("MEMBERS_WORLD", nonMember.body.get("loginStatus"));
 
 		when(mockClient.getLoginIndex()).thenReturn(14);
+		setResponse("Your account has been disabled.");
 		Response banned = get("/login");
-		assertEquals("Account is banned", banned.body.get("loginError"));
+		assertEquals("DISABLED", banned.body.get("loginStatus"));
 
 		when(mockClient.getLoginIndex()).thenReturn(4);
+		setResponse("Incorrect username or password.");
 		Response invalidCreds = get("/login");
-		assertEquals("Invalid credentials", invalidCreds.body.get("loginError"));
+		assertEquals("INVALID_LOGIN", invalidCreds.body.get("loginStatus"));
 
 		when(mockClient.getLoginIndex()).thenReturn(3);
+		setResponse("Enter your authenticator code.");
 		Response authFail = get("/login");
-		assertEquals("Authentication failed - invalid credentials", authFail.body.get("loginError"));
+		assertEquals("ENTER_AUTH", authFail.body.get("loginStatus"));
 
 		when(mockClient.getLoginIndex()).thenReturn(24);
+		setResponse("You were disconnected from the server.");
 		Response disconnected = get("/login");
-		assertEquals("Disconnected from server", disconnected.body.get("loginError"));
+		assertEquals("SIGNED_OUT", disconnected.body.get("loginStatus"));
 	}
 
 	@Test
@@ -339,6 +411,7 @@ public class LoginHandlerTest {
 
 		for (int idx : new int[]{0, 1, 2, 5, 10, 20, 99}) {
 			when(mockClient.getLoginIndex()).thenReturn(idx);
+			responseLines.set(Collections.emptyList());
 			Response resp = get("/login");
 			assertNull("loginIndex " + idx + " should not produce loginError", resp.body.get("loginError"));
 		}
@@ -401,6 +474,10 @@ public class LoginHandlerTest {
 		HttpURLConnection conn = openConnection(path);
 		conn.setRequestMethod("GET");
 		return readResponse(conn);
+	}
+
+	private static void setResponse(String... lines) {
+		responseLines.set(java.util.Arrays.asList(lines));
 	}
 
 	private Response post(String path, Map<String, Object> body) throws IOException {

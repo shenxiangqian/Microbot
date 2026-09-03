@@ -1,10 +1,17 @@
 package net.runelite.client.plugins.microbot.util.keyboard;
 
+import net.runelite.client.plugins.microbot.util.mouse.BotEventGuard;
+import org.junit.After;
 import org.junit.Test;
 
+import java.awt.Canvas;
+import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 /**
  * Pins the VK → character mapping that {@link Rs2Keyboard#keyPress(int)} uses to
@@ -20,6 +27,29 @@ import static org.junit.Assert.assertEquals;
  * non-printable key produces {@link KeyEvent#CHAR_UNDEFINED}.
  */
 public class Rs2KeyboardTest {
+	@After
+	public void clearGuardState() {
+		while (BotEventGuard.isSynthetic()) {
+			BotEventGuard.end();
+		}
+	}
+
+	@Test
+	public void dispatchMarksEventsAsSynthetic() {
+		Canvas canvas = new Canvas();
+		AtomicBoolean syntheticDuringDispatch = new AtomicBoolean();
+		canvas.addKeyListener(new KeyAdapter() {
+			@Override
+			public void keyPressed(KeyEvent event) {
+				syntheticDuringDispatch.set(BotEventGuard.isSynthetic());
+			}
+		});
+
+		Rs2Keyboard.dispatchKeyEvent(canvas, KeyEvent.KEY_PRESSED, KeyEvent.VK_A, 'a', 0);
+
+		assertTrue(syntheticDuringDispatch.get());
+		assertFalse(BotEventGuard.isSynthetic());
+	}
 
 	@Test
 	public void digitsMapToDigitChars() {
