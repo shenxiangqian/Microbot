@@ -15,8 +15,8 @@ import java.util.LinkedList;
 
 @Getter
 public abstract class Mouse {
-    private static final int POINT_LIFETIME = 14;// Maximum number of points to store
-    final int MAX_POINTS = 500;
+    private static final int POINT_LIFETIME = 14;// Milliseconds before each point fades
+    final int MAX_POINTS = 300;
 	Deque<Point> points = new ConcurrentLinkedDeque<>();
 	Point lastClick = new Point(-1, -1); // getter for last click
     // getter for click before last click

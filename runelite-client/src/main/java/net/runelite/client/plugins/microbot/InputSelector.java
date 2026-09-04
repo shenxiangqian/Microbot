@@ -59,6 +59,15 @@ public class InputSelector {
 
         @Override
         public MouseEvent mouseMoved(MouseEvent mouseEvent) {
+            // Always mirror real mouse movement to the game (even when input is enabled)
+            if (!BotEventGuard.isSynthetic()) {
+                try {
+                    // Use VirtualMouse to mirror the real mouse position into the game
+                    Microbot.getMouse().move(mouseEvent.getX(), mouseEvent.getY());
+                } catch (Exception e) {
+                    // Silently ignore if mouse mirroring fails
+                }
+            }
             consumeIfBlocked(mouseEvent);
             return mouseEvent;
         }
