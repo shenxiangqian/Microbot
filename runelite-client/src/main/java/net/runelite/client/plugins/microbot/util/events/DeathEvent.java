@@ -24,6 +24,7 @@ public class DeathEvent implements BlockingEvent {
 
     @Override
     public boolean validate() {
+        if(!Microbot.isLoggedIn()) return false;
         return Microbot.getVarbitPlayerValue(DEATH_COUNTER_VARP) == 1
                 && Rs2Player.getWorldLocation().getRegionID() == DEATH_DOMAIN_REGION_ID;
     }
@@ -31,7 +32,7 @@ public class DeathEvent implements BlockingEvent {
     @Override
     public boolean execute() {
         if (Rs2Player.isMoving()) return false;
-
+        if(!Microbot.isLoggedIn()) return false;
         if (Rs2Dialogue.isInDialogue()) {
             if (Rs2Dialogue.hasContinue()) {
                 Rs2Dialogue.clickContinue();

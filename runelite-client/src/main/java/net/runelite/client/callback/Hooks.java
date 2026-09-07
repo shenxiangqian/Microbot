@@ -396,6 +396,9 @@ public class Hooks implements Callbacks
 
 		try
 		{
+			// Render ABOVE_WIDGETS layer explicitly in all game states
+			// This allows overlays to be shown on login screen, loading screen, etc.
+			renderer.renderOverlayLayer(graphics2d, OverlayLayer.ABOVE_WIDGETS);
 			renderer.renderOverlayLayer(graphics2d, OverlayLayer.ALWAYS_ON_TOP);
 		}
 		catch (Exception ex)

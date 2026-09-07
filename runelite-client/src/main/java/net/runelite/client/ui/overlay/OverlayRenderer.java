@@ -271,11 +271,23 @@ public class OverlayRenderer extends MouseAdapter
 
 	private void renderOverlays(final Graphics2D graphics, Collection<Overlay> overlays, final OverlayLayer layer)
 	{
-		if (overlays == null
-			|| overlays.isEmpty()
-			|| client.getGameState() != GameState.LOGGED_IN)
+		if (overlays == null || overlays.isEmpty())
 		{
 			return;
+		}
+
+		// Filter overlays that require logged-in state when not logged in
+		final GameState gameState = client.getGameState();
+		if (gameState != GameState.LOGGED_IN)
+		{
+			overlays = overlays.stream()
+				.filter(overlay -> !overlay.isRequiresLoggedIn())
+				.collect(java.util.stream.Collectors.toList());
+			
+			if (overlays.isEmpty())
+			{
+				return;
+			}
 		}
 
 		OverlayUtil.setGraphicProperties(graphics);

@@ -41,7 +41,6 @@ public class StandaloneExampleScript extends Script {
                 }
 
                 Microbot.status = "[StandaloneExample] running";
-
                 // Hook your automation logic here. The example just logs the
                 // player's current world location once per second.
                 WorldPoint location = Rs2Player.getWorldLocation();

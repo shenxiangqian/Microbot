@@ -83,6 +83,14 @@ public abstract class Overlay implements LayoutableRenderableEntity
 	private boolean naughtyNaughty = false;
 
 	/**
+	 * Whether this overlay requires the player to be logged in to render.
+	 * When false, the overlay will render in all game states (login screen, loading, etc.).
+	 * Default is true for backward compatibility.
+	 */
+	@Setter(AccessLevel.PROTECTED)
+	private boolean requiresLoggedIn = true;
+
+	/**
 	 * Whether this overlay can be dragged onto other overlays &amp; have
 	 * other overlays dragged onto it.
 	 */

@@ -60,8 +60,14 @@ public final class WalkerRouteState {
     public volatile int interimLastBestPathIdx = -1;
     /** Best (smallest) distance-to-target observed while holding the interim target. */
     public volatile int interimLastDistanceToTarget = Integer.MAX_VALUE;
+    /** Distance-to-target when the current interim target was published. */
+    public volatile int interimInitialDistanceToTarget = Integer.MAX_VALUE;
+    /** Player tile last observed while holding the interim target. */
+    public volatile WorldPoint interimLastObservedPlayerPosition = null;
     /** Wall-clock ms the interim target was last re-chosen. */
     public volatile long interimLastRetargetAtMs = 0L;
+    /** Whether the current interim target was issued by recovery rather than normal route flow. */
+    public volatile boolean interimTargetRecovery = false;
 
     // ---- idle nudge: detects a stationary player mid-route and re-clicks to un-stick. ----
 
@@ -109,6 +115,8 @@ public final class WalkerRouteState {
     /** Origin/destination/time of the last door interaction attempt (wrong-traversal detection reads these). */
     public volatile WorldPoint lastDoorAttemptFrom = null;
     public volatile WorldPoint lastDoorAttemptTo = null;
+    /** Player tile when the last door click was dispatched; used to recognize ranged approach progress. */
+    public volatile WorldPoint lastDoorAttemptPlayerPosition = null;
     public volatile long lastDoorAttemptAtMs = 0L;
     /** Global door-interaction throttle: no door interaction may fire before this wall-clock ms. */
     public volatile long nextDoorInteractionAllowedAtMs = 0L;

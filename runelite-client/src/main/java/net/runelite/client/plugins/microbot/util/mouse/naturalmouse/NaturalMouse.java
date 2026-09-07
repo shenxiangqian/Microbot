@@ -11,11 +11,15 @@ import net.runelite.client.plugins.microbot.util.antiban.enums.ActivityIntensity
 import net.runelite.client.plugins.microbot.util.math.Rs2Random;
 import net.runelite.client.plugins.microbot.util.mouse.naturalmouse.api.MouseInfoAccessor;
 import net.runelite.client.plugins.microbot.util.mouse.naturalmouse.api.MouseMotionFactory;
+import net.runelite.client.plugins.microbot.util.mouse.naturalmouse.api.SpeedManager;
 import net.runelite.client.plugins.microbot.util.mouse.naturalmouse.api.SystemCalls;
 import net.runelite.client.plugins.microbot.util.mouse.naturalmouse.support.DefaultMouseMotionNature;
+import net.runelite.client.plugins.microbot.util.mouse.naturalmouse.support.DefaultNoiseProvider;
+import net.runelite.client.plugins.microbot.util.mouse.naturalmouse.support.DefaultOvershootManager;
 import net.runelite.client.plugins.microbot.util.mouse.naturalmouse.support.DefaultSpeedManager;
 import net.runelite.client.plugins.microbot.util.mouse.naturalmouse.support.Flow;
 import net.runelite.client.plugins.microbot.util.mouse.naturalmouse.support.MouseMotionNature;
+import net.runelite.client.plugins.microbot.util.mouse.naturalmouse.support.SinusoidalDeviationProvider;
 import net.runelite.client.plugins.microbot.util.mouse.naturalmouse.util.FactoryTemplates;
 import net.runelite.client.plugins.microbot.util.mouse.naturalmouse.util.FlowTemplates;
 import net.runelite.client.plugins.microbot.util.mouse.naturalmouse.util.Pair;
@@ -51,6 +55,11 @@ public class NaturalMouse {
 
     private volatile MouseMotionFactory cachedFactory;
     private volatile ActivityIntensity cachedIntensity;
+    
+    // Custom speed configuration (null = use Rs2Antiban, otherwise override)
+    @Getter
+    @Setter
+    private volatile Integer customMouseSpeedMs = null;
 
     @Inject
     public NaturalMouse() {
@@ -91,6 +100,25 @@ public class NaturalMouse {
     }
 
     public MouseMotionFactory getFactory() {
+        // Check if custom speed is set - if so, bypass Rs2Antiban entirely
+        if (customMouseSpeedMs != null) {
+            if (cachedFactory != null) {
+                // Update existing factory's speed if it changed
+                SpeedManager currentManager = cachedFactory.getSpeedManager();
+                if (currentManager instanceof DefaultSpeedManager) {
+                    ((DefaultSpeedManager) currentManager).setMouseMovementBaseTimeMs(customMouseSpeedMs);
+                }
+                return cachedFactory;
+            }
+            // Create new factory with custom speed
+            log.debug("Creating custom speed motion factory with {}ms base time", customMouseSpeedMs);
+            MouseMotionFactory factory = createCustomSpeedFactory(customMouseSpeedMs);
+            cachedFactory = factory;
+            cachedIntensity = null; // Clear intensity since we're using custom speed
+            return factory;
+        }
+        
+        // Original Rs2Antiban-based logic
         ActivityIntensity intensity = Rs2Antiban.getActivityIntensity();
         if (cachedFactory != null && intensity == cachedIntensity) {
             return cachedFactory;
@@ -134,6 +162,33 @@ public class NaturalMouse {
 //		factory.setSpeedManager(manager);
 //
 //		return factory;
+    }
+
+    /**
+     * Creates a custom speed factory with specified base time.
+     * This bypasses Rs2Antiban entirely.
+     * 
+     * @param baseTimeMs base time in milliseconds for mouse movement (lower = faster)
+     * @return configured MouseMotionFactory
+     */
+    private MouseMotionFactory createCustomSpeedFactory(int baseTimeMs) {
+        MouseMotionFactory factory = new MouseMotionFactory(nature);
+        
+        DefaultSpeedManager manager = new DefaultSpeedManager(flows);
+        manager.setMouseMovementBaseTimeMs(baseTimeMs);
+        
+        factory.setDeviationProvider(new SinusoidalDeviationProvider(SinusoidalDeviationProvider.DEFAULT_SLOPE_DIVIDER));
+        factory.setNoiseProvider(new DefaultNoiseProvider(DefaultNoiseProvider.DEFAULT_NOISINESS_DIVIDER));
+        factory.getNature().setReactionTimeVariationMs(100);
+        factory.setSpeedManager(manager);
+        factory.setRandom(random);
+        
+        DefaultOvershootManager overshootManager = (DefaultOvershootManager) factory.getOvershootManager();
+        overshootManager.setOvershoots(2);
+        overshootManager.setMinDistanceForOvershoots(3);
+        overshootManager.setMinOvershootMovementMs(100);
+        
+        return factory;
     }
 
     /**

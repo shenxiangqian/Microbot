@@ -18,7 +18,7 @@ import org.slf4j.event.Level;
 public class Pathfinder implements Runnable {
     /**
      * Detailed pathfinder traces — set logger {@code net.runelite.client.plugins.microbot.shortestpath.pathfinder}
-     * to DEBUG, or use {@link Microbot#log(org.slf4j.event.Level, String, Object...)} routing via Microbot.
+     * to DEBUG, or use {@link Microbot#log(Level, String, Object...)} routing via Microbot.
      */
     private static void pathfinderDiag(String format, Object... args) {
         Microbot.log(Level.DEBUG, "[PathfinderDiag] " + format, args);
@@ -27,7 +27,7 @@ public class Pathfinder implements Runnable {
     private static final Comparator<Node> NODE_ORDER = Comparator
             .comparingInt(Node::fCost)
             .thenComparingInt(n -> n.cost)
-            .thenComparingInt(n -> n.tiebreaker);
+            .thenComparingInt(n -> n.packedPosition);
 
     /**
      * Bidirectional search only for single-target routes at least this Chebyshev distance apart.
@@ -49,6 +49,8 @@ public class Pathfinder implements Runnable {
     private final PathfinderConfig config;
     private CollisionMap map;
     private final boolean targetInWilderness;
+    private final Integer suppressedTransportOrigin;
+    private final Integer suppressedTransportDestination;
 
     // Walking subgraph uses A* (boundary is a PQ keyed on f = g + Chebyshev heuristic),
     // so among walking nodes the search picks the most promising direction first.
@@ -56,7 +58,7 @@ public class Pathfinder implements Runnable {
     // travel cost is cheaper than any frontier walking node's g-cost, preserving the
     // existing "try cheap transports before walking farther" selection behavior.
     //
-    // Comparator chain is (fCost, gCost, tiebreaker):
+    // Comparator chain is (fCost, gCost, packedPosition):
     //   1. fCost — standard A* primary ordering.
     //   2. gCost — required for correctness under early-discovery. addNeighbors() marks
     //      a neighbor visited at insert time (not at pop), so a node only ever enters
@@ -65,11 +67,9 @@ public class Pathfinder implements Runnable {
     //      suboptimal value (because visited is already set when the lower-g node later
     //      tries to discover the same neighbor). Preferring lower gCost on ties keeps
     //      early-discovery optimal.
-    //   3. tiebreaker — per-node random. Among nodes with identical (f, g) — common in
-    //      open-grid regions where many tiles share the same distance-from-start and
-    //      distance-to-goal — this rotates the exploration order each run so paths
-    //      diverge tile-by-tile between successive searches with the same endpoints.
-    //      Kills the deterministic "identical route every trip" fingerprint.
+    //   3. packedPosition provides stable ordering among otherwise equivalent nodes.
+    //      The overlay, ETA calculation, and executor can therefore reproduce the same
+    //      shortest tile sequence from the same route inputs.
     private final Queue<Node> boundary = new PriorityQueue<>(4096, NODE_ORDER);
     private final Queue<Node> pending = new PriorityQueue<>(256);
     private final Queue<Node> boundaryBackward = new PriorityQueue<>(4096, NODE_ORDER);
@@ -94,10 +94,19 @@ public class Pathfinder implements Runnable {
     private int wildernessLevel;
 
     public Pathfinder(PathfinderConfig config, int start, Set<Integer> targets) {
+        this(config, start, targets, null, null);
+    }
+
+    private Pathfinder(PathfinderConfig config, int start, Set<Integer> targets,
+                       WorldPoint suppressedTransportOrigin, WorldPoint suppressedTransportDestination) {
         stats = new PathfinderStats();
         this.config = config;
         this.start = start;
         this.targets = targets;
+        this.suppressedTransportOrigin = suppressedTransportOrigin == null
+                ? null : WorldPointUtil.packWorldPoint(suppressedTransportOrigin);
+        this.suppressedTransportDestination = suppressedTransportDestination == null
+                ? null : WorldPointUtil.packWorldPoint(suppressedTransportDestination);
         this.targetsPacked = new int[targets.size()];
         int idx = 0;
         for (Integer t : targets) {
@@ -116,8 +125,20 @@ public class Pathfinder implements Runnable {
         this(config, WorldPointUtil.packWorldPoint(start), targets.stream().map(WorldPointUtil::packWorldPoint).collect(Collectors.toSet()));
     }
 
+    public Pathfinder(PathfinderConfig config, WorldPoint start, Set<WorldPoint> targets,
+                      WorldPoint suppressedTransportOrigin, WorldPoint suppressedTransportDestination) {
+        this(config, WorldPointUtil.packWorldPoint(start),
+                targets.stream().map(WorldPointUtil::packWorldPoint).collect(Collectors.toSet()),
+                suppressedTransportOrigin, suppressedTransportDestination);
+    }
+
     public Pathfinder(PathfinderConfig config, WorldPoint start, WorldPoint target) {
         this(config, start, Set.of(target));
+    }
+
+    public Pathfinder(PathfinderConfig config, WorldPoint start, WorldPoint target,
+                      WorldPoint suppressedTransportOrigin, WorldPoint suppressedTransportDestination) {
+        this(config, start, Set.of(target), suppressedTransportOrigin, suppressedTransportDestination);
     }
 
     public WorldPoint getStart() {
@@ -202,7 +223,8 @@ public class Pathfinder implements Runnable {
     }
 
     private void addNeighbors(Node node) {
-        List<Node> nodes = map.getNeighbors(node, visited, config, targets);
+        List<Node> nodes = map.getNeighbors(node, visited, config, targets,
+                suppressedTransportOrigin, suppressedTransportDestination);
         boolean afterTransport = node instanceof TransportNode;
         for (Node neighbor : nodes) {
             if (config.avoidWilderness(node.packedPosition, neighbor.packedPosition, targetInWilderness)) {
@@ -444,7 +466,8 @@ public class Pathfinder implements Runnable {
 
     private void addNeighborsForwardWithMeet(Node node, Map<Integer, Node> forwardAt, Map<Integer, Node> backwardAt,
             long[] bestMeetingCost, Node[] meetF, Node[] meetB) {
-        List<Node> nodes = map.getNeighbors(node, visited, config, targets);
+        List<Node> nodes = map.getNeighbors(node, visited, config, targets,
+                suppressedTransportOrigin, suppressedTransportDestination);
         boolean afterTransport = node instanceof TransportNode;
         for (Node neighbor : nodes) {
             if (config.avoidWilderness(node.packedPosition, neighbor.packedPosition, targetInWilderness)) {
@@ -471,7 +494,8 @@ public class Pathfinder implements Runnable {
     private void addNeighborsBackwardWithMeet(Node node, VisitedTiles visitedB, Map<Integer, Set<Transport>> incoming,
             Set<Integer> puzzleAllow, Map<Integer, Node> forwardAt, Map<Integer, Node> backwardAt,
             long[] bestMeetingCost, Node[] meetF, Node[] meetB) {
-        List<Node> nodes = map.getReverseNeighbors(node, visitedB, config, puzzleAllow, incoming);
+        List<Node> nodes = map.getReverseNeighbors(node, visitedB, config, puzzleAllow, incoming,
+                suppressedTransportOrigin, suppressedTransportDestination);
         boolean afterTransport = node instanceof TransportNode;
         for (Node pred : nodes) {
             if (config.avoidWilderness(pred.packedPosition, node.packedPosition, targetInWilderness)) {
