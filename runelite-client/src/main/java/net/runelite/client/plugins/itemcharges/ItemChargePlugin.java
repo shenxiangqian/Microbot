@@ -70,7 +70,7 @@ import net.runelite.client.util.Text;
 	name = "Item Charges",
 	description = "Show number of item charges remaining",
 	tags = {"inventory", "notifications", "overlay"}, 
-	alwaysOn = true
+	alwaysOn = false
 )
 @Slf4j
 public class ItemChargePlugin extends Plugin

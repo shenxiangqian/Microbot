@@ -104,7 +104,7 @@ import static net.runelite.client.plugins.grounditems.config.MenuHighlightMode.*
 	name = "Ground Items",
 	description = "Highlight ground items and/or show price information",
 	tags = {"grand", "exchange", "high", "alchemy", "prices", "highlight", "overlay", "lootbeam"},
-	alwaysOn = true
+	alwaysOn = false
 )
 public class GroundItemsPlugin extends Plugin
 {

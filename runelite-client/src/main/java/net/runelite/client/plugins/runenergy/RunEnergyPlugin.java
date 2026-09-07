@@ -63,7 +63,7 @@ import java.util.regex.Pattern;
 	description = "Show various information related to run energy",
 	tags = {"overlay", "stamina"},
 	enabledByDefault = true,
-	alwaysOn = true
+	alwaysOn = false
 )
 @Slf4j
 public class RunEnergyPlugin extends Plugin

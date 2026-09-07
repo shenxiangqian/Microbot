@@ -27,8 +27,8 @@ import net.runelite.api.Constants;
 
 final class LogConsolePanel extends JPanel
 {
-	private static final int MAX_CHARACTERS = 100_000;
-	private static final int MAX_RAW_CHARACTERS = 150_000;
+	private static final int MAX_CHARACTERS = 50_000;
+	private static final int MAX_RAW_CHARACTERS = 75_000;
 	private static final int PREFERRED_HEIGHT = 160;
 	private static final Color ERROR_COLOR = new Color(255, 90, 90);
 	private static final Color WARNING_COLOR = new Color(255, 210, 70);
