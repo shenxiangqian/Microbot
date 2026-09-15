@@ -846,7 +846,9 @@
 3223 3472 2	3223 3472 1	Climb-down;Ladder;11802									
 3223 3472 3	3222 3471 2	Climb-down;Staircase;11793									
 3222 3471 2	3223 3472 3	Climb-up;Staircase;11790									
-3221 3471 2	3223 3472 3	Climb-up;Staircase;11790									
+3221 3471 2	3223 3472 3	Climb-up;Staircase;11790		
+3238 3450 0	3238 3449 0	Open;Door;11775	
+3238 3449 0	3238 3450 0	Open;Door;11775						
 3238 3490 0	3242 3490 1	Climb-up;Staircase;11797									
 3242 3490 1	3238 3490 0	Climb-down;Staircase;11799									
 3238 3489 0	3242 3489 1	Climb-up;Staircase;11797									
@@ -923,7 +925,9 @@
 3205 3396 1	3205 3396 0	Climb-down;Ladder;11795									
 3203 3389 1	3205 3389 0	Climb-down;Ladder;11802									
 3203 3389 0	3203 3389 1	Climb-up;Ladder;11801									
-3243 3383 0	3243 9783 0	Climb-down;Ladder;11803									
+3243 3383 0	3243 9783 0	Climb-down;Ladder;11803	
+3243 3450 0	3242 3450 0	Open;Door;11775
+3242 3450 0	3243 3450 0	Open;Door;11775								
 3243 9783 0	3244 3382 0	Climb-up;Ladder;2405									
 3244 3382 0	3244 9782 0	Climb-down;Ladder;11803									
 3244 9782 0	3244 3382 0	Climb-up;Ladder;2405									
