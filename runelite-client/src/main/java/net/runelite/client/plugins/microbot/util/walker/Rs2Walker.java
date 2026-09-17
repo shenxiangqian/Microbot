@@ -1070,6 +1070,27 @@ public class Rs2Walker {
      */
     private static final ThreadLocal<WalkCompletionContext> walkCompletionContext = new ThreadLocal<>();
 
+    /**
+     * Evaluates the current walk completion condition for the given target/generation pair.
+     * Package-private: used by {@link RuneLiteWebWalkRuntime} to poll the completion condition
+     * inside the WebWalkExecutor loop so {@code walkUntil} callers get early exit on condition met.
+     */
+    static boolean isCompletionConditionMet(WorldPoint expectedTarget, long expectedGeneration)
+    {
+        if (expectedTarget == null) {
+            return false;
+        }
+        WorldPoint activeTarget = currentTarget;
+        if (!expectedTarget.equals(activeTarget) || expectedGeneration != currentTargetGeneration.get()) {
+            return false;
+        }
+        WalkCompletionContext ctx = walkCompletionContext.get();
+        if (ctx == null) {
+            return false;
+        }
+        return evaluateWalkCompletion(ctx);
+    }
+
     private static final class WalkCompletionContext {
         private final WorldPoint target;
         private final BooleanSupplier condition;
@@ -1796,6 +1817,12 @@ public class Rs2Walker {
                         setTarget(null, "rs2walker:processWalk:player-unavailable");
                     }
                     return unavailableState;
+                }
+                WorldPoint activeTarget = currentTarget;
+                boolean cancelled = isWalkCancelled(target);
+                if (cancelled) {
+                    log.warn("processWalk SKIP iteration {}: isWalkCancelled=true target={} currentTarget={} ctx={} human={}",
+                            processWalkTail, target, activeTarget, walkCompletionContext.get(), InputArbiter.isHuman());
                 }
                 if (walkCancelledDiag(target, "processWalk:entry", processWalkTail)) {
                     return WalkerState.EXIT;

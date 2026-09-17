@@ -34,7 +34,7 @@ public final class WebWalkExecutor
             while (!Thread.currentThread().isInterrupted() && iteration++ < MAX_EXECUTOR_ITERATIONS)
             {
                 WebWalkRuntime.Observation observation = runtime.observe(session);
-                Decision decision = decide(session, observation);
+                Decision decision = decide(session, runtime, observation);
                 switch (decision.getType())
                 {
                     case ARRIVED:
@@ -103,7 +103,7 @@ public final class WebWalkExecutor
         return WalkerState.EXIT;
     }
 
-    Decision decide(WebWalkSession session, WebWalkRuntime.Observation observation)
+    Decision decide(WebWalkSession session, WebWalkRuntime runtime, WebWalkRuntime.Observation observation)
     {
         Objects.requireNonNull(session, "session");
         Objects.requireNonNull(observation, "observation");
@@ -121,6 +121,15 @@ public final class WebWalkExecutor
             case READY:
             default:
                 break;
+        }
+
+        // Poll the user's walkUntil completion condition on every tick so early-exit
+        // (e.g. dialogue appeared) is detected without waiting for the player to reach
+        // the coordinate destination.
+        if (runtime.isCompletionConditionMet())
+        {
+            runtime.finish(WalkerState.ARRIVED, "completion-condition-met");
+            return Decision.terminal(DecisionType.ARRIVED, "completion-condition-met");
         }
 
         WebWalkRuntime.RouteSnapshot route = observation.getRoute();

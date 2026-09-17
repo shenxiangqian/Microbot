@@ -16,7 +16,7 @@ public class TestScript extends Script {
 
             //Query.object().nameEquals("Tree").findFirst().ifPresent(Rs2TileObjectModel::click);
 //            int cc=0;
-            var a = Microbot.getRs2NpcCache().query().first();
+            //var a = Microbot.getRs2NpcCache().query().first();
 
         },0,600, TimeUnit.MILLISECONDS);
         return true;

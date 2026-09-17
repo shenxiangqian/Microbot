@@ -468,6 +468,12 @@ public final class RuneLiteWebWalkRuntime implements WebWalkRuntime
                 "webwalk-executor:" + reason);
     }
 
+    @Override
+    public boolean isCompletionConditionMet()
+    {
+        return Rs2Walker.isCompletionConditionMet(target, targetGeneration);
+    }
+
     static ForwardCandidate selectForwardCandidate(List<WorldPoint> path, WorldPoint player,
                                                     Set<WorldPoint> reachable, int maxEuclidean,
                                                     IntPredicate transportEdgeAtIndex)

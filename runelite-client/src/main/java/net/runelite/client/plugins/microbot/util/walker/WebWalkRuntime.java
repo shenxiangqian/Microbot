@@ -50,6 +50,16 @@ public interface WebWalkRuntime
 
     void finish(WalkerState state, String reason);
 
+    /**
+     * Checks the user's completion condition supplied to {@code walkUntil}.
+     * Returns true if the condition has been met, signaling the walker to return ARRIVED
+     * even if the player has not reached the coordinate destination.
+     */
+    default boolean isCompletionConditionMet()
+    {
+        return false;
+    }
+
     final class RouteSnapshot
     {
         private final long generation;
