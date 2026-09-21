@@ -1666,9 +1666,9 @@ public class Rs2Walker {
         }
 
         // Already in transit toward the last click — let it resolve instead of spamming clicks.
-        if (Rs2Player.isMoving()) {
-            return WalkerState.MOVING;
-        }
+//        if (Rs2Player.isMoving()) {
+//            return WalkerState.MOVING;
+//        }
 
         final List<WorldPoint> rawPath = pathfinder.getPath();
         final List<WorldPoint> path = pathfinder.getWalkablePath();

@@ -678,10 +678,13 @@ public class ClientUI
 
 			// Show frame
 			frame.setVisible(true);
+			// 不在这里直接 setTitle：游戏可能尚未加载成功（或加载失败）。
+			// 改为在 clientThread 上轮询，等到 GameState.LOGGED_IN 后再应用 --index 自定义标题；
+			// 若超时（默认 60 秒）还未进入 LOGGED_IN，则放弃，保持默认标题。
 			if (windowTitleOverridden)
 			{
-				windowTitleOverrideApplied = true;
-				frame.setTitle(windowTitleOverride);
+				log.warn("setting window tile");
+				scheduleWindowTitleOnLoggedIn();
 			}
 			// On macos setResizable needs to be called after setVisible
 			frame.setResizable(!config.lockWindowSize());
@@ -725,6 +728,51 @@ public class ClientUI
 					ep, "Max memory limit low", JOptionPane.WARNING_MESSAGE);
 			});
 		}
+	}
+
+	/**
+	 * 等游戏成功加载（GameState.LOGGED_IN）后再应用 --index 自定义窗口标题。
+	 * 若超时（默认 60 秒）仍未进入 LOGGED_IN，则放弃并保持默认标题。
+	 * 该方法必须在 show() 中 frame.setVisible(true) 之后调用一次。
+	 */
+	private void scheduleWindowTitleOnLoggedIn()
+	{
+		final long startTime = System.currentTimeMillis();
+		final long TIMEOUT_MS = 60_000L;
+
+		clientThreadProvider.get().invokeLater(() ->
+		{
+			// 已经应用过则停止轮询
+			if (windowTitleOverrideApplied)
+			{
+				return true;
+			}
+			// 超时则放弃，保持默认标题
+			if (System.currentTimeMillis() - startTime > TIMEOUT_MS)
+			{
+				log.debug("Timed out waiting for game engine to start; keeping default window title");
+				return true;
+			}
+			// client 字段类型为 Component，需强转为 Client 才能调用 getGameState()
+			// 引擎活着就算加载成功：UNKNOWN/STARTING 表示引擎尚未启动，继续等待；
+			// 其他状态（LOGIN_SCREEN 及之后）都认为加载成功，可以应用自定义标题。
+			final Client gameClient = (Client) client;
+			if (gameClient == null || gameClient.getGameState() == GameState.UNKNOWN || gameClient.getGameState() == GameState.STARTING)
+			{
+				return false; // 引擎还没启动，下一 tick 再试
+			}
+			// 切回 EDT 线程设置窗口标题（setTitle 是 Swing 调用）
+			SwingUtilities.invokeLater(() ->
+			{
+				if (!windowTitleOverrideApplied)
+				{
+					windowTitleOverrideApplied = true;
+					frame.setTitle(windowTitleOverride);
+					log.debug("Applied window title override after game engine loaded: {}", windowTitleOverride);
+				}
+			});
+			return true;
+		});
 	}
 
 	private boolean dispatchWindowKeyEvent(KeyEvent ev)

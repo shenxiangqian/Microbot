@@ -622,7 +622,9 @@ public class Rs2GrandExchange {
             Widget pricePerItemButtonX = GrandExchangeWidget.getPricePerItemButton_X();
             if (pricePerItemButtonX == null) return;
             Microbot.getMouse().click(pricePerItemButtonX.getBounds());
-            sleepUntil(() -> Rs2Widget.getWidget(InterfaceID.Chatbox.MES_TEXT2) != null); //GE Enter Price
+            sleepUntil(() -> {
+                return Microbot.getClientThread().runOnClientThreadOptional(()->Rs2Widget.isWidgetVisible(162,44)).orElse(false);
+            }); //GE Enter Price
             sleep(600, 1000);
             setChatboxValue(price);
             sleep(500, 750);
