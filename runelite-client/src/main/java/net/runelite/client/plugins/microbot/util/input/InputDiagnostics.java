@@ -12,9 +12,8 @@ import java.util.StringJoiner;
  * Live arbiter state, for verifying the yield against a running client. Off unless
  * {@code -Dmicrobot.inputDebug=true}.
  *
-	 * <p>A yield fault has one visible symptom and three causes: the listener never attached, a press
-	 * was never recorded, or the waits never observed the flag.
-	 * This separates them.
+ * <p>A yield fault has one visible symptom and three causes: the listener never attached, the
+ * threshold never tripped, or the waits never observed the flag. This separates them.
  */
 public final class InputDiagnostics
 {
@@ -46,13 +45,14 @@ public final class InputDiagnostics
 		{
 			Point botPoint = PointerState.lastBotPoint();
 			out.put("bot point", botPoint.getX() + "," + botPoint.getY());
-			out.put("pointer offset", distance(pointer, botPoint) + "px (motion does not yield)");
+			out.put("drift", distance(pointer, botPoint) + " / " + InputArbiter.motionThresholdPx() + "px");
 		}
 		else
 		{
-			// Stated rather than printing a distance from (-1,-1) that would read as a bug.
+			// No reference point yet, so motion alone cannot flip HUMAN. Stated rather than
+			// printing a distance from (-1,-1) that would read as a bug.
 			out.put("bot point", "none yet");
-			out.put("pointer offset", "n/a until first emit");
+			out.put("drift", "n/a until first emit");
 		}
 
 		long since = InputArbiter.millisSinceRealActivity();

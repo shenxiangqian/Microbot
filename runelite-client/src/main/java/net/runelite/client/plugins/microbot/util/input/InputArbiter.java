@@ -1,5 +1,7 @@
 package net.runelite.client.plugins.microbot.util.input;
 
+import net.runelite.api.Point;
+
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
@@ -67,14 +69,25 @@ public final class InputArbiter
 	}
 
 	/**
-	 * Compatibility hook for canvas pointer motion.
+	 * Measured from the last position the bot wrote, not the previous real event: per-event deltas
+	 * never accumulate, so twenty 3px moves would be 60px of travel and never cross the threshold.
 	 *
-	 * <p>Passive motion never claims input ownership. The listener still records the current cursor
-	 * in {@link PointerState}; only a real mouse-button or keyboard gesture may interrupt scripts.
+	 * <p>Before the first bot emit there is no reference and nothing to abort, so motion alone does
+	 * not flip HUMAN. Buttons and keys still do.
 	 */
 	public static void onRealMove(int canvasX, int canvasY)
 	{
-		// Intentionally empty. Keep the method so existing integrations remain source-compatible.
+		if (!PointerState.hasBotPoint())
+		{
+			return;
+		}
+		Point reference = PointerState.lastBotPoint();
+		int dx = canvasX - reference.getX();
+		int dy = canvasY - reference.getY();
+		if ((long) dx * dx + (long) dy * dy >= (long) motionThresholdPx * motionThresholdPx)
+		{
+			markActivity();
+		}
 	}
 
 	public static void onRealButtonPressed(int button)

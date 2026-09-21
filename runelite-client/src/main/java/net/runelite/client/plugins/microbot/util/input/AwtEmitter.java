@@ -100,7 +100,7 @@ public final class AwtEmitter
 	 */
 	private static void enterIfOutside(Canvas canvas, int fallbackX, int fallbackY)
 	{
-		if (!PointerState.isOutside() || InputArbiter.isHuman())
+		if (!PointerState.isOutside())
 		{
 			return;
 		}
