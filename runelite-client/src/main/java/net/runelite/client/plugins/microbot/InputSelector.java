@@ -112,6 +112,7 @@ public class InputSelector {
     private volatile boolean inputEnabled = true;
     private boolean started;
 
+
     @Inject
     public InputSelector(ClientToolbar clientToolbar, MouseManager mouseManager, KeyManager keyManager) {
         this.clientToolbar = clientToolbar;

@@ -36,6 +36,13 @@ public class VirtualMouse extends Mouse {
         lastClick = point;
     }
 
+    // The debug overlay (MicrobotMouseOverlay.render) reads getLastMove() to draw the crosshair.
+    // `points` (the trail queue) is fed separately by recordTrailPoint below, so the overlay's
+    // head position stays in sync with the cursor without coupling the two.
+    public void setLastMove(Point point) {
+        lastMove = point;
+    }
+
     // Feeds the debug overlay's fading trail only; position itself lives in PointerState.
     private void recordTrailPoint(Point point) {
         points.add(point);
@@ -161,6 +168,7 @@ public class VirtualMouse extends Mouse {
         if (InputArbiter.isHuman()) {
             return this;
         }
+        setLastMove(point);
         recordTrailPoint(point);
         AwtEmitter.moved(point.getX(), point.getY());
         return this;
@@ -194,6 +202,7 @@ public class VirtualMouse extends Mouse {
 
         runGesture(() -> InputLoop.run(emit -> {
             emit.move(point.getX(), point.getY());
+            setLastMove(point);
             recordTrailPoint(point);
             sleep(Rs2Random.logNormalBounded(40, 100));
             emit.wheel(point.getX(), point.getY(), wheelRotation, unitsToScroll);

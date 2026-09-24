@@ -323,6 +323,21 @@ final class Rs2WalkerMovement {
             routeClicksSinceMinimap = 0;
             nextMinimapClickAt = ThreadLocalRandom.current().nextInt(2, 8);
         }
+
+        // 【新增】最终目的地已在屏幕上或最终目的地已经在小地图上 + 人物已停 → 直接小地图点击最终目的地
+        // 判别器：target.equals(Rs2Walker.getCurrentTarget()) 严格区分"最终目的地"与
+        // "路径中段 / recovery / rejoin 的中间点击点"，其它调用路径完全不变。
+        WorldPoint finalTarget = Rs2Walker.getCurrentTarget();
+        if (finalTarget != null
+                && isMiniMapClickable(finalTarget)
+        ) {
+            log.warn("目的地已经在屏幕上或者小地图上~~~");
+            if(!Rs2Player.isMoving()) {
+                walkMiniMap(finalTarget);
+            }
+            return null;
+        }
+
         boolean tryMinimapFirst = routeClicksSinceMinimap >= nextMinimapClickAt;
         if (tryMinimapFirst && walkMiniMap(target)) {
             routeClicksSinceMinimap = 0;
@@ -331,18 +346,20 @@ final class Rs2WalkerMovement {
                     compactWorldPoint(target), compactWorldPoint(playerLoc), nextMinimapClickAt);
             return target;
         }
-        WorldPoint sceneFallback = walkRawPathSceneTargetToward(rawPath, target, playerLoc,
-                maxEuclidean, rawAnchorIndex);
-        if (sceneFallback != null) {
-            routeClicksSinceMinimap++;
-            return sceneFallback;
-        }
-        if (walkFastCanvasOnScreenOnly(target, true)) {
-            routeClicksSinceMinimap++;
-            WebWalkLog.spDebug("route_scene_click | to={} player={}",
-                    compactWorldPoint(target), compactWorldPoint(playerLoc));
-            return target;
-        }
+
+
+//        WorldPoint sceneFallback = walkRawPathSceneTargetToward(rawPath, target, playerLoc,
+//                maxEuclidean, rawAnchorIndex);
+//        if (sceneFallback != null) {
+//            routeClicksSinceMinimap++;
+//            return sceneFallback;
+//        }
+//        if (walkFastCanvasOnScreenOnly(target, true)) {
+//            routeClicksSinceMinimap++;
+//            WebWalkLog.spDebug("route_scene_click | to={} player={}",
+//                    compactWorldPoint(target), compactWorldPoint(playerLoc));
+//            return target;
+//        }
         if (walkMiniMap(target)) {
             routeClicksSinceMinimap = 0;
             return target;
@@ -888,18 +905,18 @@ final class Rs2WalkerMovement {
         int canvasY = canvasPoint.getY();
 
         Rs2Player.toggleRunEnergy(toggleRun);
-        NewMenuEntry entry = new NewMenuEntry()
-                .param0(canvasX)
-                .param1(canvasY)
-                .type(MenuAction.WALK)
-                .identifier(0)
-                .itemId(0)
-                .option("Walk here");
+//        NewMenuEntry entry = new NewMenuEntry()
+//                .param0(canvasX)
+//                .param1(canvasY)
+//                .type(MenuAction.WALK)
+//                .identifier(0)
+//                .itemId(0)
+//                .option("Walk here");
 
-        Microbot.doInvoke(entry,
-                new Rectangle(canvasX, canvasY, Microbot.getClient().getCanvasWidth(), Microbot.getClient().getCanvasHeight()));
-        alignCameraTowardWalkTarget(worldPoint);
-        return true;
+//        Microbot.doInvoke(entry,
+//                new Rectangle(canvasX, canvasY, Microbot.getClient().getCanvasWidth(), Microbot.getClient().getCanvasHeight()));
+        //alignCameraTowardWalkTarget(worldPoint);
+        return walkMiniMap(worldPoint);
     }
 
     static boolean isSceneCanvasClickable(WorldPoint worldPoint) {

@@ -1455,9 +1455,9 @@ public class Rs2Walker {
         }
 
         // Already in transit toward the last click — let it resolve instead of spamming clicks.
-        if (Rs2Player.isMoving()) {
-            return WalkerState.MOVING;
-        }
+//        if (Rs2Player.isMoving()) {
+//            return WalkerState.MOVING;
+//        }
 
         final List<WorldPoint> rawPath = routeStatus.getRawPath();
         final List<WorldPoint> path = routeStatus.getWalkablePath();
@@ -2754,7 +2754,7 @@ public class Rs2Walker {
                                             distance, FINAL_ADJACENT_CANVAS_NUDGE_CHEBYSHEV,
                                             DOOR_OPEN_CANVAS_NUDGE_MAX_FROM_PLAYER)
                                     && Rs2Tile.isTileReachable(recoverTarget)
-                                    && walkFastCanvas(recoverTarget)) {
+                                    && walkMiniMap(recoverTarget)) {
                                 clicked = true;
                                 clickedRecoveryTarget = recoverTarget;
                                 log.debug("[Walker] unreachable recovery: scene click -> {}", recoverTarget);
@@ -3184,7 +3184,7 @@ public class Rs2Walker {
                             finalClick = clickRouteBackedShortWalk(rawPath, canvasClickWp, finalPlayerLoc,
                                     normalMinimapReach() - 1, rawAnchorIndex);
                         } else {
-                            finalClick = Rs2Walker.walkFastCanvas(canvasClickWp);
+                            finalClick = Rs2Walker.walkMiniMap(canvasClickWp);
                         }
                         if (finalClick) {
                             waitUntilIdleAfterSceneWalk(target, POST_SCENE_WALK_IDLE_WAIT_MS_MAX, target, finishTh);
@@ -3613,7 +3613,7 @@ public class Rs2Walker {
         if (!disableWalkerUpdate && !Rs2MiniMap.isPointInsideMinimap(point)) return false;
 
         Microbot.getMouse().click(point);
-        alignCameraTowardWalkTarget(worldPoint);
+        //alignCameraTowardWalkTarget(worldPoint);
         return true;
     }
 
@@ -3812,7 +3812,7 @@ public class Rs2Walker {
             if (target != null && playerLoc.distanceTo2D(target) <= INTERIM_CLOSE_TILES
                     && clickTarget.getPlane() == target.getPlane()
                     && clickTarget.distanceTo2D(target) <= 1
-                    && walkFastCanvas(clickTarget)) {
+                    && walkMiniMap(clickTarget)) {
                 clickedTarget = clickTarget;
                 clicked = true;
             } else {

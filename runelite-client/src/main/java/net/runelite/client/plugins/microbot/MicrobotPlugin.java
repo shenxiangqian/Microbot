@@ -5,7 +5,9 @@ import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.api.events.*;
+import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
+import net.runelite.api.widgets.Widget;
 import net.runelite.client.RuneLiteProperties;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
@@ -20,6 +22,7 @@ import net.runelite.client.plugins.microbot.pouch.PouchOverlay;
 import net.runelite.client.plugins.microbot.ui.MicrobotPluginConfigurationDescriptor;
 import net.runelite.client.plugins.microbot.ui.MicrobotPluginListPanel;
 import net.runelite.client.plugins.microbot.ui.MicrobotTopLevelConfigPanel;
+import net.runelite.client.plugins.microbot.ui.ScriptToolbarController;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.death.Rs2Death;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
@@ -100,6 +103,9 @@ public class MicrobotPlugin extends Plugin
 	@Inject
 	private MicrobotConfig microbotConfig;
 
+	@Inject
+	private ScriptToolbarController scriptToolbarController;
+
 	private MicrobotTopLevelConfigPanel topLevelConfigPanel;
 
 	private NavigationButton navButton;
@@ -137,6 +143,7 @@ public class MicrobotPlugin extends Plugin
 	@Override
 	protected void startUp() throws AWTException
 	{
+		Microbot.clearLastGameTickTime();
 		log.info("Microbot: {} - {}", RuneLiteProperties.getMicrobotVersion(), RuneLiteProperties.getMicrobotCommit());
 		log.info("JVM: {} {}", System.getProperty("java.vendor"), System.getProperty("java.runtime.version"));
 
@@ -144,7 +151,7 @@ public class MicrobotPlugin extends Plugin
 
 		gameChatAppender = new GameChatAppender();
 		gameChatAppender.setName("GAME_CHAT");
-		
+
 		// Set pattern based on new configuration
 		String pattern = microbotConfig.getGameChatLogPattern().getPattern();
 		gameChatAppender.setPattern(pattern);
@@ -157,12 +164,12 @@ public class MicrobotPlugin extends Plugin
 		if (microbotConfig.enableGameChatLogging()) {
 			gameChatAppender.start();
 		}
-		
+
 		// Initialize the cached configuration in GameChatAppender
 		GameChatAppender.updateConfiguration(
-			microbotConfig.enableGameChatLogging(),
-			microbotConfig.getGameChatLogLevel().getLevel(),
-			microbotConfig.onlyMicrobotLogging()
+				microbotConfig.enableGameChatLogging(),
+				microbotConfig.getGameChatLogLevel().getLevel(),
+				microbotConfig.onlyMicrobotLogging()
 		);
 
 		Microbot.pauseAllScripts.set(false);
@@ -176,9 +183,9 @@ public class MicrobotPlugin extends Plugin
 
 		MicrobotPluginListPanel pluginListPanel = pluginListPanelProvider.get();
 		pluginListPanel.addFakePlugin(new MicrobotPluginConfigurationDescriptor(
-			"Microbot", "Microbot client settings",
-			new String[]{"client"},
-			microbotConfig, configManager.getConfigDescriptor(microbotConfig)
+				"Microbot", "Microbot client settings",
+				new String[]{"client"},
+				microbotConfig, configManager.getConfigDescriptor(microbotConfig)
 		));
 		pluginListPanel.rebuildPluginList();
 
@@ -187,15 +194,14 @@ public class MicrobotPlugin extends Plugin
 		final BufferedImage icon = ImageUtil.loadImageResource(getClass(), "microbot_config_icon_lg.png");
 
 		navButton = NavigationButton.builder()
-			.tooltip("Community Plugins")
-			.icon(icon)
-			.priority(0)
-			.panel(topLevelConfigPanel)
-			.build();
+				.tooltip("Community Plugins")
+				.icon(icon)
+				.priority(0)
+				.panel(topLevelConfigPanel)
+				.build();
 
 		clientToolbar.addNavigation(navButton);
-
-		new InputSelector(clientToolbar);
+		scriptToolbarController.startUp(navButton);
 
 		Microbot.getPouchScript().startUp();
 
@@ -629,11 +635,29 @@ public class MicrobotPlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
-		// Cheap identity check: a stale registration leaves the arbiter deaf with no other symptom.
-		CanvasInputListener.attach();
+		Client client = Microbot.getClient();
+		if (isInGame(client))
+		{
+			Microbot.recordGameTick();
+		}
+		else
+		{
+			Microbot.clearLastGameTickTime();
+		}
 
 		// Start Leagues teleport calibration ASAP after login (non-blocking; prompts for consent once).
 		Rs2LeaguesTransport.tickLeaguesCalibration();
+	}
+
+	static boolean isInGame(Client client)
+	{
+		if (client == null || client.getGameState() != GameState.LOGGED_IN || client.getLocalPlayer() == null)
+		{
+			return false;
+		}
+
+		Widget playWidget = client.getWidget(InterfaceID.WelcomeScreen.PLAY);
+		return playWidget == null || playWidget.isHidden();
 	}
 
 	@Subscribe(priority = 100)
