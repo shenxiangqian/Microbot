@@ -14,33 +14,6 @@ public final class WebWalkLog {
     private WebWalkLog() {
     }
 
-    public static void minimapDispatch(WorldPoint requested, WorldPoint actual,
-                                       int pathIndex, int tick, boolean redispatch) {
-        movementDispatch(WebWalkRuntime.DispatchMethod.MINIMAP, requested, actual,
-                pathIndex, tick, redispatch);
-    }
-
-    public static void movementDispatch(WebWalkRuntime.DispatchMethod method,
-                                        WorldPoint requested, WorldPoint actual,
-                                        int pathIndex, int tick, boolean redispatch) {
-        LOG.debug("[WebWalk] click | method={} requested={} actual={} idx={} tick={} redispatch={}",
-                method, requested, actual, pathIndex, tick, redispatch);
-    }
-
-    public static void checkpointReleased(String reason, WorldPoint checkpoint,
-                                          int pathIndex, WorldPoint player, int tick) {
-        LOG.debug("[WebWalk] checkpoint | released={} target={} idx={} at={} tick={}",
-                reason, checkpoint, pathIndex, player, tick);
-    }
-
-    public static void executorReplan(String reason, int attempt, WorldPoint player, WorldPoint goal) {
-        LOG.info("[WebWalk] replan | reason={} attempt={} at={} goal={}", reason, attempt, player, goal);
-    }
-
-    public static void executorFailure(String errorType, WorldPoint goal) {
-        LOG.warn("[WebWalk] executor_failure | type={} goal={}", errorType, goal);
-    }
-
     public static void routeClear(String reason) {
         LOG.info("[WebWalk] clear | {}", reason);
     }
@@ -169,14 +142,14 @@ public final class WebWalkLog {
         LOG.debug("[WebWalk] sp | " + fmt, args);
     }
 
-    /** One INFO line; full blob only at TRACE. */
+    /** One INFO line; full blob only at DEBUG. */
     public static void compareSummary(double totalMs, int directTiles, int bankTiles, String verdictOneLine) {
         LOG.info("[WebWalk] compare | {}ms direct={}t bank={}t | {}",
                 String.format("%.1f", totalMs), directTiles, bankTiles, verdictOneLine);
     }
 
     public static void compareDetail(String multiline) {
-        LOG.trace("[WebWalk] compare_detail\n{}", multiline);
+        LOG.debug("[WebWalk] compare_detail\n{}", multiline);
     }
 
     public static void compareError(double totalMs, WorldPoint target, String err) {
@@ -197,7 +170,7 @@ public final class WebWalkLog {
     }
 
     public static void tmark(String phase, long elapsedMs, WorldPoint goal, WorldPoint at, String detail) {
-        LOG.debug("[WebWalk] tmark | phase={} elapsed={}ms goal={} at={} detail={}",
+        LOG.info("[WebWalk] tmark | phase={} elapsed={}ms goal={} at={} detail={}",
                 phase, elapsedMs, goal, at, detail == null ? "-" : detail);
     }
 

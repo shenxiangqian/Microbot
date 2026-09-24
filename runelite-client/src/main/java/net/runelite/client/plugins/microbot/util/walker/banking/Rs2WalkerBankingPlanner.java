@@ -27,6 +27,8 @@ import net.runelite.client.plugins.microbot.util.bank.enums.BankLocation;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.leaguetransport.Rs2LeaguesTransport;
 import net.runelite.client.plugins.microbot.util.magic.Runes;
+import net.runelite.client.plugins.microbot.util.magic.RuneFilter;
+import java.util.Optional;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 import net.runelite.client.plugins.microbot.util.walker.TransportRouteAnalysis;
 import net.runelite.client.plugins.microbot.util.walker.WebWalkLog;
@@ -155,7 +157,7 @@ public final class Rs2WalkerBankingPlanner {
      * {@link #getTransportsForDestination} pathfinds first and inspects only transports on the
      * resulting route — so an item is fetched solely when the chosen route actually needs it.
      */
-    public static boolean planningCoversPlainTransport(Transport transport) {
+    static boolean planningCoversPlainTransport(Transport transport) {
         if (transport == null || transport.getType() != TransportType.TRANSPORT) {
             return false;
         }
@@ -1012,6 +1014,22 @@ public final class Rs2WalkerBankingPlanner {
             WebWalkLog.compareError(totalTimeMs, target, e.getMessage());
             return new TransportRouteAnalysis(new ArrayList<>(), null, null, new ArrayList<>(), new ArrayList<>(), "Error calculating routes: " + e.getMessage());
         }
+    }
+
+    /** Total spell cost for this route, minus inventory, equipped sources and rune pouch (never bank). */
+    public static Optional<Map<Runes, Integer>> getMissingSpellRunes(List<Transport> transports) {
+        Map<Runes, Integer> required = new HashMap<>();
+        for (Transport transport : transports) {
+            if (transport.getType() != TransportType.TELEPORTATION_SPELL) continue;
+            String display = transport.getDisplayInfo();
+            if (display == null) return Optional.empty();
+            String spellName = display.split(":", 2)[0].trim();
+            Rs2Spells spell = Rs2Magic.getRs2Spell(spellName);
+            if (spell == null) return Optional.empty();
+            spell.getRequiredRunes().forEach((rune, quantity) -> required.merge(rune, quantity, Integer::sum));
+        }
+        if (required.isEmpty()) return Optional.of(Map.of());
+        return Optional.of(Rs2Magic.getMissingRunes(required, RuneFilter.builder().includeBank(false).build()));
     }
 
     private static Rs2RouteResult planRoute(

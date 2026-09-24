@@ -45,6 +45,9 @@ public class TransportRouteAnalysis {
     /** Path of WorldPoints from bank to destination, accounting for items available in bank */
     private final List<WorldPoint> pathFromBank;
 
+    /** Captured before the planner restores inventory-only transport eligibility. */
+    private final List<Transport> bankLegTransports;
+
     /** Exact immutable edge sequence selected from the bank to the destination */
     private final List<Rs2RouteStep> routeFromBankSteps;
 
@@ -88,6 +91,31 @@ public class TransportRouteAnalysis {
     }
 
     /**
+     * Legacy form carrying the bank-leg transports captured before the planner
+     * restores inventory-only transport eligibility.
+     */
+    public TransportRouteAnalysis(List<WorldPoint> directPath,
+                                BankLocation nearestBank, WorldPoint bankLocation, List<WorldPoint> pathToBank,
+                                List<WorldPoint> pathFromBank, String analysis,
+                                int directDistance, int bankingRouteDistance, List<Transport> bankLegTransports) {
+        this.bankLegTransports = bankLegTransports == null ? List.of() : List.copyOf(bankLegTransports);
+        this.directPath = immutablePath(directPath);
+        this.nearestBank = nearestBank;
+        this.bankLocation = bankLocation;
+        this.pathToBank = immutablePath(pathToBank);
+        this.pathFromBank = immutablePath(pathFromBank);
+        this.analysis = analysis;
+        this.directDistance = directDistance;
+        this.bankingRouteDistance = bankingRouteDistance;
+        this.directRouteStepsExact = false;
+        this.routeToBankStepsExact = false;
+        this.routeFromBankStepsExact = false;
+        this.directRouteSteps = List.of();
+        this.routeToBankSteps = List.of();
+        this.routeFromBankSteps = List.of();
+    }
+
+    /**
      * Constructs an analysis carrying the exact immutable route steps selected by each search.
      *
      * <p>The appended step parameters preserve the two historical constructor descriptors for Hub
@@ -101,6 +129,7 @@ public class TransportRouteAnalysis {
                                 List<Rs2RouteStep> directRouteSteps,
                                 List<Rs2RouteStep> routeToBankSteps,
                                 List<Rs2RouteStep> routeFromBankSteps) {
+        this.bankLegTransports = List.of();
         this.directPath = immutablePath(directPath);
         this.nearestBank = nearestBank;
         this.bankLocation = bankLocation;
