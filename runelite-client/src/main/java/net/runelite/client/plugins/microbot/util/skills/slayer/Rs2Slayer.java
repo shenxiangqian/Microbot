@@ -293,15 +293,15 @@ public class Rs2Slayer {
 	 * selections made by the planner. No shared planner configuration or mutable catalog rematch is
 	 * exposed to the caller.</p>
 	 */
-	public static List<Rs2TransportEdge> prepareItemTransportEdges(WorldPoint cachedMonsterLocation) {
-		List<Rs2TransportEdge> selected = Rs2Walker
-				.getTransportEdgesForDestination(cachedMonsterLocation, true)
-				.stream()
-				.filter(edge -> edge.getType() == Rs2TransportType.TELEPORTATION_ITEM
-						|| edge.getType() == Rs2TransportType.FAIRY_RING)
-				.collect(Collectors.toUnmodifiableList());
-		return Rs2Walker.getMissingTransportEdges(selected);
-	}
+//	public static List<Rs2TransportEdge> prepareItemTransportEdges(WorldPoint cachedMonsterLocation) {
+//		List<Rs2TransportEdge> selected = Rs2Walker
+//				.getTransportEdgesForDestination(cachedMonsterLocation, true)
+//				.stream()
+//				.filter(edge -> edge.getType() == Rs2TransportType.TELEPORTATION_ITEM
+//						|| edge.getType() == Rs2TransportType.FAIRY_RING)
+//				.collect(Collectors.toUnmodifiableList());
+//		return Rs2Walker.getMissingTransportEdges(selected);
+//	}
 
     private static boolean hasRequiredTeleportItem(Transport transport) {
         if (transport.getType() == TransportType.FAIRY_RING) {
