@@ -3636,7 +3636,7 @@ public class Rs2Walker {
         if (!disableWalkerUpdate && !Rs2MiniMap.isPointInsideMinimap(point)) return false;
 
         Microbot.getMouse().click(point);
-        alignCameraTowardWalkTarget(worldPoint);
+        //alignCameraTowardWalkTarget(worldPoint);
         return true;
     }
 
@@ -3959,16 +3959,18 @@ public class Rs2Walker {
             return Rs2Walker.walkMiniMap(worldPoint);
         }
 
-        NewMenuEntry entry = new NewMenuEntry()
-                .param0(canvasX)
-                .param1(canvasY)
-                .type(MenuAction.WALK)
-                .identifier(0)
-                .itemId(0)
-                .option("Walk here");
+        walkMiniMap(worldPoint);
 
-        Microbot.doInvoke(entry,
-                new Rectangle(canvasX, canvasY, Microbot.getClient().getCanvasWidth(), Microbot.getClient().getCanvasHeight()));
+//        NewMenuEntry entry = new NewMenuEntry()
+//                .param0(canvasX)
+//                .param1(canvasY)
+//                .type(MenuAction.WALK)
+//                .identifier(0)
+//                .itemId(0)
+//                .option("Walk here");
+//
+//        Microbot.doInvoke(entry,
+//                new Rectangle(canvasX, canvasY, Microbot.getClient().getCanvasWidth(), Microbot.getClient().getCanvasHeight()));
         return true;
     }
 

@@ -887,19 +887,24 @@ final class Rs2WalkerMovement {
         int canvasX = canvasPoint.getX();
         int canvasY = canvasPoint.getY();
 
-        Rs2Player.toggleRunEnergy(toggleRun);
-        NewMenuEntry entry = new NewMenuEntry()
-                .param0(canvasX)
-                .param1(canvasY)
-                .type(MenuAction.WALK)
-                .identifier(0)
-                .itemId(0)
-                .option("Walk here");
+        if(Rs2Player.getRunEnergy()>10&&toggleRun){
+            Rs2Player.toggleRunEnergy(toggleRun);
+        }else if(!toggleRun) Rs2Player.toggleRunEnergy(toggleRun);
 
-        Microbot.doInvoke(entry,
-                new Rectangle(canvasX, canvasY, Microbot.getClient().getCanvasWidth(), Microbot.getClient().getCanvasHeight()));
-        alignCameraTowardWalkTarget(worldPoint);
-        return true;
+//        NewMenuEntry entry = new NewMenuEntry()
+//                .param0(canvasX)
+//                .param1(canvasY)
+//                .type(MenuAction.WALK)
+//                .identifier(0)
+//                .itemId(0)
+//                .option("Walk here");
+//
+//        Microbot.doInvoke(entry,
+//                new Rectangle(canvasX, canvasY, Microbot.getClient().getCanvasWidth(), Microbot.getClient().getCanvasHeight()));
+//        alignCameraTowardWalkTarget(worldPoint);
+//        return true;
+        log.warn("大地图点击换小地图点击。。。。");
+        return walkMiniMap(worldPoint);
     }
 
     static boolean isSceneCanvasClickable(WorldPoint worldPoint) {
