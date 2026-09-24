@@ -1,7 +1,6 @@
 package net.runelite.client.plugins.microbot.util.walker.state;
 
 import net.runelite.api.coords.WorldPoint;
-import net.runelite.client.plugins.microbot.util.walker.banking.BankedWalkPlan;
 
 /**
  * Consolidated mutable route state for the walker, extracted from {@code Rs2Walker}'s scattered static
@@ -156,9 +155,6 @@ public final class WalkerRouteState {
      * this: the attempt runs a full pathfind, so repeating it every tick costs as much as it achieves.
      */
     public volatile long lastBankBootstrapMissAtMs = 0L;
-    public volatile BankedWalkPlan bankedWalkPlan;
-    public volatile WorldPoint bankBootstrapTarget;
-    public volatile WorldPoint bankBootstrapLocation;
 
     /**
      * Last time the recovery block hit the door-recovery-suppressed branch (an unresolved door sits on the
