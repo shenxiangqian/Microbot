@@ -735,9 +735,7 @@ public class Hooks implements Callbacks
 
 				if (plugins.stream()
 					.filter(p -> p.getInternalName().equals(name))
-					.filter(p -> ver == null || p.getVersion().equals(ver))
-					.findAny()
-					.isPresent())
+					.anyMatch(p -> ver == null || p.getVersion().equals(ver)))
 				{
 					log.info("Client is outdated due to outdated plugin: {}", outdatedPlugin);
 					return true;

@@ -103,6 +103,18 @@ public class Microbot {
     public static boolean enableAutoRunOn = true;
     public static boolean useStaminaPotsIfNeeded = true;
     public static int runEnergyThreshold = 1000;
+
+    private static final AutoRunPolicy AUTO_RUN_POLICY = AutoRunPolicy.create();
+
+    public static boolean shouldEnableAutoRun(int rawEnergy, boolean runEnabled) {
+        return AUTO_RUN_POLICY.shouldEnable(rawEnergy, runEnabled);
+    }
+
+    public static void onAutoRunEnabled() {
+        AUTO_RUN_POLICY.onRunEnabled();
+        runEnergyThreshold = AUTO_RUN_POLICY.getThresholdPercent() * 100;
+    }
+
     /**
      * Reactive unreachable-interaction recovery. When the game prints "I can't reach that!"
      * (a shut door or wall between the player and a clicked NPC/object), the next interact call

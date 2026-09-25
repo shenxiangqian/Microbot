@@ -94,11 +94,25 @@ public class Pathfinder implements Runnable {
      */
     private int wildernessLevel;
 
+    private final Integer suppressedTransportOrigin;
+    private final Integer suppressedTransportDestination;
+
+
+
     public Pathfinder(PathfinderConfig config, int start, Set<Integer> targets) {
+        this(config, start, targets, null, null);
+    }
+
+    private Pathfinder(PathfinderConfig config, int start, Set<Integer> targets,
+                       WorldPoint suppressedTransportOrigin, WorldPoint suppressedTransportDestination) {
         stats = new PathfinderStats();
         this.config = config;
         this.start = start;
         this.targets = targets;
+        this.suppressedTransportOrigin = suppressedTransportOrigin == null
+                ? null : WorldPointUtil.packWorldPoint(suppressedTransportOrigin);
+        this.suppressedTransportDestination = suppressedTransportDestination == null
+                ? null : WorldPointUtil.packWorldPoint(suppressedTransportDestination);
         this.targetsPacked = new int[targets.size()];
         int idx = 0;
         for (Integer t : targets) {
@@ -119,6 +133,14 @@ public class Pathfinder implements Runnable {
 
     public Pathfinder(PathfinderConfig config, WorldPoint start, WorldPoint target) {
         this(config, start, Set.of(target));
+    }
+
+
+    public Pathfinder(PathfinderConfig config, WorldPoint start, Set<WorldPoint> targets,
+                      WorldPoint suppressedTransportOrigin, WorldPoint suppressedTransportDestination) {
+        this(config, WorldPointUtil.packWorldPoint(start),
+                targets.stream().map(WorldPointUtil::packWorldPoint).collect(Collectors.toSet()),
+                suppressedTransportOrigin, suppressedTransportDestination);
     }
 
     /**

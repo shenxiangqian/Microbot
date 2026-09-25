@@ -1786,13 +1786,13 @@ public class Rs2GameObject {
             // target, which is exactly the reachability proof a follow-up click needs. LOS is
             // deliberately not consulted: solid objects fail line-of-sight from everywhere
             // (docs/entity-guides), which is how the old opt-in checkCanReach path deadlocked.
-            if (CantReachTargetRecovery.retryExhausted(
-                    Microbot.cantReachTargetRetries, Rs2Random.between(3, 5))) {
-                Microbot.pauseAllScripts.compareAndSet(false, true);
-                Microbot.showMessage("Your bot tried to interact with an object for "
-                        + Microbot.cantReachTargetRetries + " times but failed. Please take a look at what is happening.");
-                return false;
-            }
+//            if (CantReachTargetRecovery.retryExhausted(
+//                    Microbot.cantReachTargetRetries, Rs2Random.between(3, 5))) {
+//                Microbot.pauseAllScripts.compareAndSet(false, true);
+//                Microbot.showMessage("Your bot tried to interact with an object for "
+//                        + Microbot.cantReachTargetRetries + " times but failed. Please take a look at what is happening.");
+//                return false;
+//            }
             WorldPoint objectLocation = object.getWorldLocation();
             if (objectLocation == null) return false;
             Microbot.cantReachTargetRetries++;
