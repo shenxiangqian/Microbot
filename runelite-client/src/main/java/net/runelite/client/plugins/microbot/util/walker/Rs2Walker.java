@@ -1455,9 +1455,9 @@ public class Rs2Walker {
         }
 
         // Already in transit toward the last click — let it resolve instead of spamming clicks.
-        if (Rs2Player.isMoving()) {
-            return WalkerState.MOVING;
-        }
+//        if (Rs2Player.isMoving()) {
+//            return WalkerState.MOVING;
+//        }
 
         final List<WorldPoint> rawPath = routeStatus.getRawPath();
         final List<WorldPoint> path = routeStatus.getWalkablePath();
@@ -3613,7 +3613,7 @@ public class Rs2Walker {
         if (!disableWalkerUpdate && !Rs2MiniMap.isPointInsideMinimap(point)) return false;
 
         Microbot.getMouse().click(point);
-        alignCameraTowardWalkTarget(worldPoint);
+        //alignCameraTowardWalkTarget(worldPoint);
         return true;
     }
 
@@ -3907,7 +3907,10 @@ public class Rs2Walker {
             log.debug("[Walker] walkFastCanvas rejected: null worldPoint");
             return false;
         }
+        if(toggleRun && Rs2Player.getRunEnergy() > 10)
         Rs2Player.toggleRunEnergy(toggleRun);
+        else if(!toggleRun) Rs2Player.toggleRunEnergy(false);
+
         Point canv;
         LocalPoint localPoint = LocalPoint.fromWorld(Microbot.getClient().getTopLevelWorldView(), worldPoint);
 
@@ -3942,16 +3945,19 @@ public class Rs2Walker {
             return Rs2Walker.walkMiniMap(worldPoint);
         }
 
-        NewMenuEntry entry = new NewMenuEntry()
-                .param0(canvasX)
-                .param1(canvasY)
-                .type(MenuAction.WALK)
-                .identifier(0)
-                .itemId(0)
-                .option("Walk here");
-
-        Microbot.doInvoke(entry,
-                new Rectangle(canvasX, canvasY, Microbot.getClient().getCanvasWidth(), Microbot.getClient().getCanvasHeight()));
+//        NewMenuEntry entry = new NewMenuEntry()
+//                .param0(canvasX)
+//                .param1(canvasY)
+//                .type(MenuAction.WALK)
+//                .identifier(0)
+//                .itemId(0)
+//                .option("Walk here");
+//
+//        Microbot.doInvoke(entry,
+//                new Rectangle(canvasX, canvasY, Microbot.getClient().getCanvasWidth(), Microbot.getClient().getCanvasHeight()));
+//        return true;
+        log.warn("还是点击大地图，但是换成小地图了。现在我不想点了，可以吗");
+        //return walkMiniMap(worldPoint);
         return true;
     }
 
