@@ -1778,35 +1778,6 @@ public class Rs2GameObject {
 
     public static boolean clickObject(TileObject object, String action) {
         if (object == null) return false;
-        if (CantReachTargetRecovery.shouldStart(
-                Microbot.isCantReachTargetDetectionEnabled, Microbot.cantReachTarget)) {
-            // The game said "I can't reach that!" on the previous interaction — something solid sits
-            // between us and the target, most often a shut door. The walker is the only recovery
-            // that opens doors; its arrival check requires a standable tile BESIDE an unwalkable
-            // target, which is exactly the reachability proof a follow-up click needs. LOS is
-            // deliberately not consulted: solid objects fail line-of-sight from everywhere
-            // (docs/entity-guides), which is how the old opt-in checkCanReach path deadlocked.
-//            if (CantReachTargetRecovery.retryExhausted(
-//                    Microbot.cantReachTargetRetries, Rs2Random.between(3, 5))) {
-//                Microbot.pauseAllScripts.compareAndSet(false, true);
-//                Microbot.showMessage("Your bot tried to interact with an object for "
-//                        + Microbot.cantReachTargetRetries + " times but failed. Please take a look at what is happening.");
-//                return false;
-//            }
-            WorldPoint objectLocation = object.getWorldLocation();
-            if (objectLocation == null) return false;
-            Microbot.cantReachTargetRetries++;
-            Microbot.log("[Interact] can't-reach recovery: walking to object " + object.getId()
-                    + " at " + objectLocation + " (attempt " + Microbot.cantReachTargetRetries + ")");
-            if (CantReachTargetRecovery.walkTo(objectLocation, 2)) {
-                Microbot.pauseAllScripts.compareAndSet(true, false);
-                Microbot.cantReachTarget = false;
-                Microbot.cantReachTargetRetries = 0;
-                // fall through and click from beside it
-            } else {
-                return false;
-            }
-        }
         // Use LocalPoint-based distance when the object is in the current scene (e.g. inside a
         // POH instance, where Rs2Player.getWorldLocation() returns the overworld-template tile
         // and distanceTo() against an instance world point yields Integer.MAX_VALUE, falsely
@@ -1929,17 +1900,17 @@ public class Rs2GameObject {
 
 
             Microbot.doInvoke(new NewMenuEntry()
-                    .param0(param0)
-                    .param1(param1)
-                    .opcode(menuAction.getId())
-                    .identifier(object.getId())
-                    .itemId(-1)
-                    .option(action)
-                    .target(objComp.getName())
-                    .gameObject(object)
-                    .worldViewId(worldViewId)
+                            .param0(param0)
+                            .param1(param1)
+                            .opcode(menuAction.getId())
+                            .identifier(object.getId())
+                            .itemId(-1)
+                            .option(action)
+                            .target(objComp.getName())
+                            .gameObject(object)
+                            .worldViewId(worldViewId)
                     ,
-                Rs2UiHelper.getObjectClickbox(object));
+                    Rs2UiHelper.getObjectClickbox(object));
 // MenuEntryImpl(getOption=Use, getTarget=Barrier, getIdentifier=43700, getType=GAME_OBJECT_THIRD_OPTION, getParam0=53, getParam1=51, getItemId=-1, isForceLeftClick=true, getWorldViewId=-1, isDeprioritized=false)
             //Rs2Reflection.invokeMenu(param0, param1, menuAction.getId(), object.getId(),-1, "", "", -1, -1);
 
@@ -1949,6 +1920,180 @@ public class Rs2GameObject {
 
         return true;
     }
+
+//    public static boolean clickObject(TileObject object, String action) {
+//        if (object == null) return false;
+//        if (CantReachTargetRecovery.shouldStart(
+//                Microbot.isCantReachTargetDetectionEnabled, Microbot.cantReachTarget)) {
+//            // The game said "I can't reach that!" on the previous interaction — something solid sits
+//            // between us and the target, most often a shut door. The walker is the only recovery
+//            // that opens doors; its arrival check requires a standable tile BESIDE an unwalkable
+//            // target, which is exactly the reachability proof a follow-up click needs. LOS is
+//            // deliberately not consulted: solid objects fail line-of-sight from everywhere
+//            // (docs/entity-guides), which is how the old opt-in checkCanReach path deadlocked.
+////            if (CantReachTargetRecovery.retryExhausted(
+////                    Microbot.cantReachTargetRetries, Rs2Random.between(3, 5))) {
+////                Microbot.pauseAllScripts.compareAndSet(false, true);
+////                Microbot.showMessage("Your bot tried to interact with an object for "
+////                        + Microbot.cantReachTargetRetries + " times but failed. Please take a look at what is happening.");
+////                return false;
+////            }
+//            WorldPoint objectLocation = object.getWorldLocation();
+//            if (objectLocation == null) return false;
+//            Microbot.cantReachTargetRetries++;
+//            Microbot.log("[Interact] can't-reach recovery: walking to object " + object.getId()
+//                    + " at " + objectLocation + " (attempt " + Microbot.cantReachTargetRetries + ")");
+//            if (CantReachTargetRecovery.walkTo(objectLocation, 2)) {
+//                Microbot.pauseAllScripts.compareAndSet(true, false);
+//                Microbot.cantReachTarget = false;
+//                Microbot.cantReachTargetRetries = 0;
+//                // fall through and click from beside it
+//            } else {
+//                return false;
+//            }
+//        }
+//        // Use LocalPoint-based distance when the object is in the current scene (e.g. inside a
+//        // POH instance, where Rs2Player.getWorldLocation() returns the overworld-template tile
+//        // and distanceTo() against an instance world point yields Integer.MAX_VALUE, falsely
+//        // triggering the "not close enough" path).
+//        LocalPoint playerLocal = Microbot.getClient().getLocalPlayer() != null
+//                ? Microbot.getClient().getLocalPlayer().getLocalLocation() : null;
+//        LocalPoint objectLocal = object.getLocalLocation();
+//        boolean tooFar;
+//        if (playerLocal != null && objectLocal != null && objectLocal.isInScene()) {
+//            int dx = playerLocal.getSceneX() - objectLocal.getSceneX();
+//            int dy = playerLocal.getSceneY() - objectLocal.getSceneY();
+//            tooFar = Math.max(Math.abs(dx), Math.abs(dy)) > 51;
+//        } else {
+//            tooFar = Rs2Player.getWorldLocation().distanceTo(object.getWorldLocation()) > 51;
+//        }
+//        if (tooFar) {
+//            Microbot.log("Object with id " + object.getId() + " is not close enough to interact with. Walking to the object....");
+//            Rs2Walker.walkTo(object.getWorldLocation());
+//            return false;
+//        }
+//
+//        try {
+//
+//            int param0;
+//            int param1;
+//            MenuAction menuAction = MenuAction.WALK;
+//
+//            ObjectComposition objComp = convertToObjectComposition(object);
+//            if (objComp == null) return false;
+//
+//            Microbot.status = action + " " + objComp.getName();
+//
+//            if (object instanceof GameObject) {
+//                GameObject obj = (GameObject) object;
+//                if (obj.sizeX() > 1) {
+//                    param0 = obj.getLocalLocation().getSceneX() - obj.sizeX() / 2;
+//                } else {
+//                    param0 = obj.getLocalLocation().getSceneX();
+//                }
+//
+//                if (obj.sizeY() > 1) {
+//                    param1 = obj.getLocalLocation().getSceneY() - obj.sizeY() / 2;
+//                } else {
+//                    param1 = obj.getLocalLocation().getSceneY();
+//                }
+//            } else {
+//                // Default objects like walls, groundobjects, decorationobjects etc...
+//                param0 = object.getLocalLocation().getSceneX();
+//                param1 = object.getLocalLocation().getSceneY();
+//            }
+//
+//            int index = 0;
+//            if (action != null) {
+//                String[] actions;
+//                if (objComp.getImpostorIds() != null && objComp.getImpostor() != null) {
+//                    actions = objComp.getImpostor().getActions();
+//                } else {
+//                    actions = objComp.getActions();
+//                }
+//
+//                for (int i = 0; i < actions.length; i++) {
+//                    if (actions[i] == null) continue;
+//                    if (action.equalsIgnoreCase(Rs2UiHelper.stripColTags(actions[i]))) {
+//                        index = i;
+//                        break;
+//                    }
+//                }
+//
+//                if (index == actions.length)
+//                    index = 0;
+//            }
+//
+//            if (index == -1) {
+//                Microbot.log("Failed to interact with object " + object.getId() + " " + action);
+//            }
+//
+//
+//            if (Microbot.getClient().isWidgetSelected()) {
+//                menuAction = MenuAction.WIDGET_TARGET_ON_GAME_OBJECT;
+//            } else if (index == 0) {
+//                menuAction = MenuAction.GAME_OBJECT_FIRST_OPTION;
+//            } else if (index == 1) {
+//                menuAction = MenuAction.GAME_OBJECT_SECOND_OPTION;
+//            } else if (index == 2) {
+//                menuAction = MenuAction.GAME_OBJECT_THIRD_OPTION;
+//            } else if (index == 3) {
+//                menuAction = MenuAction.GAME_OBJECT_FOURTH_OPTION;
+//            } else if (index == 4) {
+//                menuAction = MenuAction.GAME_OBJECT_FIFTH_OPTION;
+//            }
+//
+//            if (!Rs2Camera.isTileOnScreen(object.getLocalLocation())) {
+//                Rs2Camera.turnTo(object);
+//            }
+//
+//            // both hands must be free before using MINECART
+//            if (objComp.getName().toLowerCase().contains("train cart")) {
+//                Rs2Equipment.unEquip(EquipmentInventorySlot.WEAPON);
+//                Rs2Equipment.unEquip(EquipmentInventorySlot.SHIELD);
+//                sleepUntil(() -> Rs2Equipment.get(EquipmentInventorySlot.WEAPON) == null && Rs2Equipment.get(EquipmentInventorySlot.SHIELD) == null);
+//            }
+//
+///*            if (object.getWorldView().getId() != -1) {
+//                param0 = 3;
+//                param1 = 4;
+//            }*/
+//
+//            int worldViewId = WorldView.TOPLEVEL;
+//
+//            if (!object.getWorldView().isTopLevel()) {
+//                var worldView =Microbot.getClientThread().invoke(() ->  Microbot.getClient().getLocalPlayer().getWorldView());
+//                if (worldView == null) {
+//                    worldViewId = Microbot.getClient().getTopLevelWorldView().getId();
+//                } else {
+//                    worldViewId = worldView
+//                            .getId();
+//                }
+//
+//            }
+//
+//
+//            Microbot.doInvoke(new NewMenuEntry()
+//                    .param0(param0)
+//                    .param1(param1)
+//                    .opcode(menuAction.getId())
+//                    .identifier(object.getId())
+//                    .itemId(-1)
+//                    .option(action)
+//                    .target(objComp.getName())
+//                    .gameObject(object)
+//                    .worldViewId(worldViewId)
+//                    ,
+//                Rs2UiHelper.getObjectClickbox(object));
+//// MenuEntryImpl(getOption=Use, getTarget=Barrier, getIdentifier=43700, getType=GAME_OBJECT_THIRD_OPTION, getParam0=53, getParam1=51, getItemId=-1, isForceLeftClick=true, getWorldViewId=-1, isDeprioritized=false)
+//            //Rs2Reflection.invokeMenu(param0, param1, menuAction.getId(), object.getId(),-1, "", "", -1, -1);
+//
+//        } catch (Exception ex) {
+//            Microbot.log("Failed to interact with object " + ex.getMessage());
+//        }
+//
+//        return true;
+//    }
 
     public static boolean hasLineOfSight(TileObject tileObject) {
         return hasLineOfSight(Rs2Player.getWorldLocation(), tileObject);
