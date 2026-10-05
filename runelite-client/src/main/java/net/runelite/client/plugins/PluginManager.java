@@ -111,15 +111,6 @@ public class PluginManager {
         this.pluginModuleFactory = pluginModuleFactory;
     }
 
-    @VisibleForTesting
-    PluginManager(
-            final boolean safeMode,
-            final EventBus eventBus,
-            final Scheduler scheduler,
-            final ConfigManager configManager,
-            final Provider<GameEventManager> sceneTileManager) {
-        this(safeMode, false, eventBus, scheduler, configManager, sceneTileManager);
-    }
 
     @Subscribe
     public void onProfileChanged(ProfileChanged profileChanged) {
