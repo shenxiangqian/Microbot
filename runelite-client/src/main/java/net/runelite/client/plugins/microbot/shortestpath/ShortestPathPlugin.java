@@ -1065,6 +1065,23 @@ public class ShortestPathPlugin extends Plugin {
 		return defaultValue;
 	}
 
+    // 在 ShortestPathPlugin.java 中添加
+
+    /**
+     * 动态设置路径配置覆盖。需要在脚本开始时调用。
+     * 设置后会影响后续的路径计算。
+     */
+    public static void setConfigOverride(String key, Object value) {
+        configOverride.put(key, value);
+    }
+
+    /**
+     * 清除所有配置覆盖
+     */
+    public static void clearConfigOverride() {
+        configOverride.clear();
+    }
+
 	private TileCounter override(String configOverrideKey, TileCounter defaultValue) {
 		if (!configOverride.isEmpty()) {
 			Object value = configOverride.get(configOverrideKey);
