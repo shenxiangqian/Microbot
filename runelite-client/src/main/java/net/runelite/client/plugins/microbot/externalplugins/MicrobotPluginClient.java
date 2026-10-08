@@ -42,13 +42,7 @@ import javax.inject.Inject;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 @Slf4j
 public class MicrobotPluginClient
@@ -125,6 +119,63 @@ public class MicrobotPluginClient
             }
         }
     }
+
+    public Optional<String> findFirstAssetCreatedAt(MicrobotPluginManifest manifest, JsonArray releases)
+    {
+        if (manifest == null || releases == null || releases.size() == 0)
+        {
+            return Optional.empty();
+        }
+
+        String artifactId = resolveArtifactId(manifest);
+        if (Strings.isNullOrEmpty(artifactId))
+        {
+            return Optional.empty();
+        }
+
+        String normalizedArtifact = artifactId.toLowerCase(Locale.ROOT);
+        String firstCreatedAt = null;
+
+        for (JsonElement releaseElem : releases)
+        {
+            if (!releaseElem.isJsonObject())
+            {
+                continue;
+            }
+
+            JsonObject release = releaseElem.getAsJsonObject();
+            JsonArray assets = release.getAsJsonArray("assets");
+            if (assets == null)
+            {
+                continue;
+            }
+
+            for (JsonElement assetElem : assets)
+            {
+                if (!assetElem.isJsonObject())
+                {
+                    continue;
+                }
+
+                JsonObject asset = assetElem.getAsJsonObject();
+                String assetName = getString(asset, "name");
+                if (Strings.isNullOrEmpty(assetName) || !matchesArtifact(assetName, normalizedArtifact))
+                {
+                    continue;
+                }
+
+                String createdAt = getString(asset, "created_at");
+                if (!Strings.isNullOrEmpty(createdAt)
+                        && (firstCreatedAt == null || createdAt.compareTo(firstCreatedAt) < 0))
+                {
+                    firstCreatedAt = createdAt;
+                }
+            }
+        }
+
+        return Optional.ofNullable(firstCreatedAt);
+    }
+
 
     /**
      * Returns the URL for downloading a plugin JAR

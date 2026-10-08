@@ -45,6 +45,7 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.PluginChanged;
 import net.runelite.client.events.ProfileChanged;
 import net.runelite.client.plugins.lowmemory.LowMemoryPlugin;
+import net.runelite.client.plugins.microbot.AlwaysOnPlugins;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.task.Schedule;
 import net.runelite.client.task.ScheduledMethod;
@@ -175,6 +176,10 @@ public class PluginManager {
         }
 
         return list;
+    }
+
+    public boolean isPluginAlwaysOn(Plugin plugin) {
+        return AlwaysOnPlugins.isLocked(plugin.getClass().getAnnotation(PluginDescriptor.class));
     }
 
     public void loadDefaultPluginConfiguration(Collection<Plugin> plugins) {
