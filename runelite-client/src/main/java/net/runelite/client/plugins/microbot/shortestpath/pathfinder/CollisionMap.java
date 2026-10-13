@@ -296,6 +296,10 @@ public class CollisionMap {
                     suppressedTransportOrigin, suppressedTransportDestination)) {
                 continue;
             }
+            if (transport.getDestination() != null && config.isLearnedBlockedTransport(
+                    node.packedPosition, WorldPointUtil.packWorldPoint(transport.getDestination()))) {
+                continue;
+            }
 
             if (TransportType.isTeleport(transport.getType(), transport.getOrigin())) {
                 if (config.isIgnoreTeleportAndItems()) {
@@ -412,6 +416,9 @@ public class CollisionMap {
                 }
                 int originPacked = WorldPointUtil.packWorldPoint(origin);
                 if (visitedBackward.get(originPacked)) {
+                    continue;
+                }
+                if (config.isLearnedBlockedTransport(originPacked, node.packedPosition)) {
                     continue;
                 }
                 if (isSuppressedTransportEdge(originPacked, node.packedPosition,

@@ -675,17 +675,11 @@ public class PathfinderConfig {
                 ? Collections.unmodifiableSet(relevantItemIds)
                 : null;
 
-        refreshBoostedLevels = new int[Transport.REQUIREMENT_LEVEL_COUNT];
+        int[] boostedLevels = new int[Transport.REQUIREMENT_LEVEL_COUNT];
+        refreshBoostedLevels = boostedLevels;
         Map<Integer, Integer> varplayerValues = new HashMap<>();
         Microbot.getClientThread().runOnClientThreadOptional(() -> {
-            for (int i = 0; i < SKILLS.length; i++) {
-                refreshBoostedLevels[i] = client.getBoostedSkillLevel(SKILLS[i]);
-            }
-            refreshBoostedLevels[Transport.TOTAL_LEVEL_INDEX] = client.getTotalLevel();
-            Player localPlayer = client.getLocalPlayer();
-            refreshBoostedLevels[Transport.COMBAT_LEVEL_INDEX] =
-                    localPlayer == null ? 0 : localPlayer.getCombatLevel();
-            refreshBoostedLevels[Transport.QUEST_POINTS_INDEX] = client.getVarpValue(VarPlayer.QUEST_POINTS);
+            readRequirementLevels(client, boostedLevels);
             for (int id : varbitIds) {
                 Microbot.getVarbitValue(id);
             }
@@ -778,9 +772,9 @@ public class PathfinderConfig {
                 .sorted()
                 .toArray();
         int[] sortedSkillOrdinals = requiredSkillOrdinals.stream().mapToInt(Integer::intValue).sorted().toArray();
-        int verificationHash = computeTransportRefreshVerificationHash(refreshBoostedLevels, sortedSkillOrdinals,
+        int verificationHash = computeTransportRefreshVerificationHash(boostedLevels, sortedSkillOrdinals,
                 sortedVarbitConditions, sortedVarplayerConditions, sortedQuestIds);
-        int[] verificationComponents = computeTransportRefreshVerificationComponents(refreshBoostedLevels,
+        int[] verificationComponents = computeTransportRefreshVerificationComponents(boostedLevels,
                 sortedSkillOrdinals, sortedVarbitConditions, sortedVarplayerConditions, sortedQuestIds);
         long verifyTime = System.currentTimeMillis() - verifyStart;
         long captureStart = System.currentTimeMillis();
@@ -848,6 +842,11 @@ public class PathfinderConfig {
 
     public boolean isBlockedTransportStep(int originPacked, int destinationPacked) {
         return isBlockedTransportStep(originPacked, destinationPacked, blockedTransportEdgesPacked);
+    }
+
+    public boolean isLearnedBlockedTransport(int originPacked, int destinationPacked) {
+        return !learnedBlockedEdgeKeys.isEmpty()
+                && learnedBlockedEdgeKeys.contains(transportEdgeKey(originPacked, destinationPacked));
     }
 
     static boolean isBlockedTransportStep(int originPacked, int destinationPacked, Set<Long> blockedEdges) {
@@ -1432,6 +1431,16 @@ public class PathfinderConfig {
             }
         }
         return true;
+    }
+
+    static void readRequirementLevels(Client client, int[] levels) {
+        for (int i = 0; i < SKILLS.length; i++) {
+            levels[i] = client.getBoostedSkillLevel(SKILLS[i]);
+        }
+        levels[Transport.TOTAL_LEVEL_INDEX] = client.getTotalLevel();
+        Player localPlayer = client.getLocalPlayer();
+        levels[Transport.COMBAT_LEVEL_INDEX] = localPlayer == null ? 0 : localPlayer.getCombatLevel();
+        levels[Transport.QUEST_POINTS_INDEX] = client.getVarpValue(VarPlayer.QUEST_POINTS);
     }
 
     private int currentRequirementLevel(int index) {

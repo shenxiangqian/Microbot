@@ -22,3 +22,15 @@ This is the documentation entry point. Keep it short: it should route readers to
 
 ## Maintenance Rule
 High-level docs should state stable intent, ownership, and links. Put changing API examples, route lists, widget IDs, screenshots, and generated inventories in the narrowest lower-level document.
+- [Architecture](ARCHITECTURE.md)
+- [Decision Records](decisions/)
+- [Development Setup](development.md)
+- [Installation](installation.md)
+- [API Overview](../runelite-client/src/main/java/net/runelite/client/plugins/microbot/api/README.md)
+- [Queryable API Guide](../runelite-client/src/main/java/net/runelite/client/plugins/microbot/api/QUERYABLE_API.md)
+- [Runtime CLI](MICROBOT_CLI.md)
+- [Agent Server](AGENT_SERVER.md)
+- [Agentic Testing Loop](AGENTIC_TESTING_LOOP.md)
+- [Release E2E Smoke Test](RELEASE_E2E.md)
+- [Entity Guides](entity-guides/README.md)
+- [Gallery](gallery.md)
