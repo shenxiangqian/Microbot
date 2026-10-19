@@ -287,6 +287,111 @@ public class Rs2NpcModel extends Rs2ActorModel implements IEntity
         }
     }
 
+    public boolean interact(String action) {
+        if (npc == null) {
+            log.error("Error interacting with NPC for action '{}': NPC is null", action);
+            return false;
+        }
+
+        var npcName = getName();
+
+        Microbot.status = action + " " + npcName;
+        try {
+//            if (CantReachTargetRecovery.shouldStart(
+//                    Microbot.isCantReachTargetDetectionEnabled, Microbot.cantReachTarget)) {
+//                if (!hasLineOfSight()) {
+//                    if (CantReachTargetRecovery.retryExhausted(
+//                            Microbot.cantReachTargetRetries, Rs2Random.between(3, 5))) {
+//                        Microbot.pauseAllScripts.compareAndSet(false, true);
+//                        Microbot.showMessage("Your bot tried to interact with an NPC for "
+//                                + Microbot.cantReachTargetRetries + " times but failed. Please take a look at what is happening.");
+//                        return false;
+//                    }
+//                    final WorldPoint npcWorldPoint = getWorldLocation();
+//                    if (npcWorldPoint == null) {
+//                        log.error("Error interacting with NPC '{}' for action '{}': WorldPoint is null", npcName, action);
+//                        return false;
+//                    }
+//                    Microbot.cantReachTargetRetries++;
+//                    if (CantReachTargetRecovery.walkTo(npcWorldPoint, 2)) {
+//                        Microbot.pauseAllScripts.compareAndSet(true, false);
+//                        Microbot.cantReachTarget = false;
+//                        Microbot.cantReachTargetRetries = 0;
+//                        // fall through and click from beside it
+//                    } else {
+//                        return false;
+//                    }
+//                } else {
+//                    Microbot.pauseAllScripts.compareAndSet(true, false);
+//                    Microbot.cantReachTarget = false;
+//                    Microbot.cantReachTargetRetries = 0;
+//                }
+//            }
+
+            final NPCComposition npcComposition = Microbot.getClientThread().runOnClientThreadOptional(
+                    () -> Microbot.getClient().getNpcDefinition(getId())).orElse(null);
+            if (npcComposition == null) {
+                log.error("Error interacting with NPC '{}' for action '{}': NPCComposition is null", npcName, action);
+                return false;
+            }
+
+            final String[] actions = npcComposition.getActions();
+            if (actions == null) {
+                log.error("Error interacting with NPC '{}' for action '{}': Actions are null", npcName, action);
+                return false;
+            }
+
+            final int index;
+            if (action == null || action.isBlank()) {
+                index = IntStream.range(0, actions.length)
+                        .filter(i -> actions[i] != null && !actions[i].isEmpty())
+                        .findFirst().orElse(-1);
+            } else {
+                final String finalAction = action;
+                index = IntStream.range(0, actions.length)
+                        .filter(i -> actions[i] != null && actions[i].equalsIgnoreCase(finalAction))
+                        .findFirst().orElse(-1);
+            }
+
+            final MenuAction menuAction = getMenuAction(index);
+            if (menuAction == null) {
+                if (index == -1) {
+                    log.error("Error interacting with NPC '{}' for action '{}': Action not found. Actions={}", npcName, action, actions);
+                } else {
+                    log.error("Error interacting with NPC '{}' for action '{}': Invalid Index={}. Actions={}", npcName, action, index, actions);
+                }
+                return false;
+            }
+            action = menuAction == MenuAction.WIDGET_TARGET_ON_NPC ? "Use" : actions[index];
+
+            final LocalPoint localPoint = getLocalLocation();
+            if (localPoint == null) {
+                log.error("Error interacting with NPC '{}' for action '{}': LocalPoint is null", npcName, action);
+                return false;
+            }
+            if (!Rs2Camera.isTileOnScreen(localPoint)) {
+                Rs2Camera.turnTo(npc);
+            }
+
+            Microbot.doInvoke(new NewMenuEntry()
+                            .param0(0)
+                            .param1(0)
+                            .opcode(menuAction.getId())
+                            .identifier(getIndex())
+                            .itemId(-1)
+                            .target(npcName)
+                            .actor(npc)
+                            .option(action)
+                    ,
+                    Rs2UiHelper.getActorClickbox(npc));
+            return true;
+
+        } catch (Exception ex) {
+            log.error("Error interacting with NPC '{}' for action '{}': ", npcName, action, ex);
+            return false;
+        }
+    }
+
     private MenuAction getMenuAction(int index) {
         if (Microbot.getClient().isWidgetSelected()) {
             return MenuAction.WIDGET_TARGET_ON_NPC;
