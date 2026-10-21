@@ -42,28 +42,22 @@ import javax.inject.Inject;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 @Slf4j
 public class MicrobotPluginClient
 {
     private static final HttpUrl MICROBOT_PLUGIN_HUB_URL = HttpUrl.parse("https://chsami.github.io/Microbot-Hub/");
     private static final HttpUrl MICROBOT_PLUGIN_RELEASES_URL = HttpUrl.parse(
-        "https://github.com/chsami/Microbot-Hub/releases/download/latest-release/"
+            "https://github.com/chsami/Microbot-Hub/releases/download/latest-release/"
     );
     private static final HttpUrl MICROBOT_PLUGIN_RELEASES_API_URL = HttpUrl.parse(
-        "https://api.github.com/repos/chsami/Microbot-Hub/releases"
+            "https://api.github.com/repos/chsami/Microbot-Hub/releases"
     );
     private static final String GITHUB_TOKEN_ENV = "GITHUB_TOKEN";
     private static final String ASSET_EXTENSION = ".jar";
     private static final String PLUGINS_JSON_PATH = "plugins.json";
-    
+
     private final OkHttpClient okHttpClient;
     private final Gson gson;
 
@@ -80,13 +74,13 @@ public class MicrobotPluginClient
     public List<MicrobotPluginManifest> downloadManifest() throws IOException
     {
         HttpUrl manifestUrl = MICROBOT_PLUGIN_HUB_URL.newBuilder()
-            .addPathSegment(PLUGINS_JSON_PATH)
-            .build();
+                .addPathSegment(PLUGINS_JSON_PATH)
+                .build();
 
         Request request = new Request.Builder()
-            .url(manifestUrl)
-            .header("Cache-Control", "no-cache")
-            .build();
+                .url(manifestUrl)
+                .header("Cache-Control", "no-cache")
+                .build();
 
         try (Response res = okHttpClient.newCall(request).execute())
         {
@@ -95,8 +89,8 @@ public class MicrobotPluginClient
                 throw new IOException("Non-OK response code: " + res.code());
             }
 
-            return gson.fromJson(res.body().string(), 
-                new TypeToken<List<MicrobotPluginManifest>>(){}.getType());
+            return gson.fromJson(res.body().string(),
+                    new TypeToken<List<MicrobotPluginManifest>>(){}.getType());
         }
         catch (JsonSyntaxException ex)
         {
@@ -126,6 +120,63 @@ public class MicrobotPluginClient
         }
     }
 
+    public Optional<String> findFirstAssetCreatedAt(MicrobotPluginManifest manifest, JsonArray releases)
+    {
+        if (manifest == null || releases == null || releases.size() == 0)
+        {
+            return Optional.empty();
+        }
+
+        String artifactId = resolveArtifactId(manifest);
+        if (Strings.isNullOrEmpty(artifactId))
+        {
+            return Optional.empty();
+        }
+
+        String normalizedArtifact = artifactId.toLowerCase(Locale.ROOT);
+        String firstCreatedAt = null;
+
+        for (JsonElement releaseElem : releases)
+        {
+            if (!releaseElem.isJsonObject())
+            {
+                continue;
+            }
+
+            JsonObject release = releaseElem.getAsJsonObject();
+            JsonArray assets = release.getAsJsonArray("assets");
+            if (assets == null)
+            {
+                continue;
+            }
+
+            for (JsonElement assetElem : assets)
+            {
+                if (!assetElem.isJsonObject())
+                {
+                    continue;
+                }
+
+                JsonObject asset = assetElem.getAsJsonObject();
+                String assetName = getString(asset, "name");
+                if (Strings.isNullOrEmpty(assetName) || !matchesArtifact(assetName, normalizedArtifact))
+                {
+                    continue;
+                }
+
+                String createdAt = getString(asset, "created_at");
+                if (!Strings.isNullOrEmpty(createdAt)
+                        && (firstCreatedAt == null || createdAt.compareTo(firstCreatedAt) < 0))
+                {
+                    firstCreatedAt = createdAt;
+                }
+            }
+        }
+
+        return Optional.ofNullable(firstCreatedAt);
+    }
+
+
     /**
      * Returns the URL for downloading a plugin JAR
      */
@@ -143,8 +194,8 @@ public class MicrobotPluginClient
         {
             String fileName = buildAssetFileName(artifactId, version);
             return MICROBOT_PLUGIN_RELEASES_URL.newBuilder()
-                .addPathSegment(fileName)
-                .build();
+                    .addPathSegment(fileName)
+                    .build();
         }
 
         return HttpUrl.parse(manifest.getUrl());
@@ -171,13 +222,13 @@ public class MicrobotPluginClient
         }
 
         HttpUrl releasesUrl = MICROBOT_PLUGIN_RELEASES_API_URL.newBuilder()
-            .addQueryParameter("per_page", "100")
-            .build();
+                .addQueryParameter("per_page", "100")
+                .build();
 
         Request request = withGithubHeaders(new Request.Builder()
-            .url(releasesUrl)
-            .header("Cache-Control", "no-cache"))
-            .build();
+                .url(releasesUrl)
+                .header("Cache-Control", "no-cache"))
+                .build();
 
         try (Response res = okHttpClient.newCall(request).execute())
         {
@@ -267,7 +318,7 @@ public class MicrobotPluginClient
     private Request.Builder withGithubHeaders(Request.Builder builder)
     {
         builder.header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "microbot-client");
+                .header("User-Agent", "microbot-client");
 
         String token = System.getenv(GITHUB_TOKEN_ENV);
         if (!Strings.isNullOrEmpty(token))

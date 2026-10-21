@@ -45,6 +45,7 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.PluginChanged;
 import net.runelite.client.events.ProfileChanged;
 import net.runelite.client.plugins.lowmemory.LowMemoryPlugin;
+import net.runelite.client.plugins.microbot.AlwaysOnPlugins;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.task.Schedule;
 import net.runelite.client.task.ScheduledMethod;
@@ -83,6 +84,7 @@ public class PluginManager {
     private final Scheduler scheduler;
     private final ConfigManager configManager;
     private final Provider<GameEventManager> sceneTileManager;
+    private final PluginModuleFactory pluginModuleFactory;
     private final List<Plugin> plugins = new CopyOnWriteArrayList<>();
     @Getter
     private final List<Plugin> activePlugins = new CopyOnWriteArrayList<>();
@@ -99,24 +101,17 @@ public class PluginManager {
             final EventBus eventBus,
             final Scheduler scheduler,
             final ConfigManager configManager,
-            final Provider<GameEventManager> sceneTileManager) {
+            final Provider<GameEventManager> sceneTileManager,
+            final PluginModuleFactory pluginModuleFactory) {
         this.safeMode = safeMode;
         this.lowDetailMode = lowDetailMode;
         this.eventBus = eventBus;
         this.scheduler = scheduler;
         this.configManager = configManager;
         this.sceneTileManager = sceneTileManager;
+        this.pluginModuleFactory = pluginModuleFactory;
     }
 
-    @VisibleForTesting
-    PluginManager(
-            final boolean safeMode,
-            final EventBus eventBus,
-            final Scheduler scheduler,
-            final ConfigManager configManager,
-            final Provider<GameEventManager> sceneTileManager) {
-        this(safeMode, false, eventBus, scheduler, configManager, sceneTileManager);
-    }
 
     @Subscribe
     public void onProfileChanged(ProfileChanged profileChanged) {
@@ -183,6 +178,10 @@ public class PluginManager {
         return list;
     }
 
+    public boolean isPluginAlwaysOn(Plugin plugin) {
+        return AlwaysOnPlugins.isLocked(plugin.getClass().getAnnotation(PluginDescriptor.class));
+    }
+
     public void loadDefaultPluginConfiguration(Collection<Plugin> plugins) {
         try {
             for (Config config : getPluginConfigProxies(plugins)) {
@@ -210,17 +209,17 @@ public class PluginManager {
             try {
                 Runnable runnable = () -> {
                     try {
-                            startPlugin(plugin);
-                        } catch (PluginInstantiationException ex) {
-                            log.error("Unable to start plugin {}", plugin.getClass().getSimpleName(), ex);
-                        }
+                        startPlugin(plugin);
+                    } catch (PluginInstantiationException ex) {
+                        log.error("Unable to start plugin {}", plugin.getClass().getSimpleName(), ex);
+                    }
                 };
                 if (SwingUtilities.isEventDispatchThread()) {
                     runnable.run();
                 }else{
                     SwingUtilities.invokeAndWait(() ->
                     {
-                    runnable.run();
+                        runnable.run();
 
                     });
                 }
@@ -232,17 +231,17 @@ public class PluginManager {
             SplashScreen.stage(.80, 1, null, "Starting plugins", loaded, scannedPlugins.size(), false);
         }
 
-		for (Plugin plugin : plugins) {
-			try {
-				ReflectUtil.queueInjectorAnnotationCacheInvalidation(plugin.injector);
-			} catch(Exception e) {
-				log.error("Unable to start plugin {}", plugin.getClass().getSimpleName(), e);
-				activePlugins.remove(plugin);
-				remove(plugin);
-				setPluginEnabled(plugin, false);
-			}
-		}
-	}
+        for (Plugin plugin : plugins) {
+            try {
+                ReflectUtil.queueInjectorAnnotationCacheInvalidation(plugin.injector);
+            } catch(Exception e) {
+                log.error("Unable to start plugin {}", plugin.getClass().getSimpleName(), e);
+                activePlugins.remove(plugin);
+                remove(plugin);
+                setPluginEnabled(plugin, false);
+            }
+        }
+    }
 
     /**
      * Loads core RuneLite plugins, excluding any Microbot-related plugins.
@@ -336,15 +335,15 @@ public class PluginManager {
                 continue;
             }
 
-			if (safeMode && !pluginDescriptor.loadInSafeMode())
-			{
-				log.debug("Disabling {} due to safe mode", clazz);
-				// also disable the plugin from autostarting later
-				configManager.setConfiguration(RuneLiteConfig.GROUP_NAME,
-					(Strings.isNullOrEmpty(pluginDescriptor.configName()) ? clazz.getSimpleName() : pluginDescriptor.configName()).toLowerCase(),
-					false);
-				continue;
-			}
+            if (safeMode && !pluginDescriptor.loadInSafeMode())
+            {
+                log.debug("Disabling {} due to safe mode", clazz);
+                // also disable the plugin from autostarting later
+                configManager.setConfiguration(RuneLiteConfig.GROUP_NAME,
+                        (Strings.isNullOrEmpty(pluginDescriptor.configName()) ? clazz.getSimpleName() : pluginDescriptor.configName()).toLowerCase(),
+                        false);
+                continue;
+            }
 
             graph.addNode((Class<Plugin>) clazz);
         }
@@ -375,7 +374,7 @@ public class PluginManager {
                 newPlugins.add(plugin);
                 add(plugin);
             } catch (PluginInstantiationException ex) {
-                log.error("Error instantiating plugin!", ex);
+                log.error("Error instantiating plugin {}!", pluginClazz, ex);
             }
 
             loaded++;
@@ -514,58 +513,49 @@ public class PluginManager {
         return activePlugins.contains(plugin);
     }
 
-    private Plugin instantiate(List<Plugin> scannedPlugins, Class<Plugin> clazz) throws PluginInstantiationException {
+    private Plugin instantiate(List<Plugin> scannedPlugins, Class<Plugin> clazz) throws PluginInstantiationException
+    {
         PluginDependency[] pluginDependencies = clazz.getAnnotationsByType(PluginDependency.class);
-        List<Plugin> deps = new ArrayList<>();
-        for (PluginDependency pluginDependency : pluginDependencies) {
+        List<Module> modules = new ArrayList<>();
+        for (PluginDependency pluginDependency : pluginDependencies)
+        {
             Optional<Plugin> dependency = scannedPlugins.stream().filter(p -> p.getClass() == pluginDependency.value()).findFirst();
-            if (!dependency.isPresent()) {
+            if (!dependency.isPresent())
+            {
                 throw new PluginInstantiationException("Unmet dependency for " + clazz.getSimpleName() + ": " + pluginDependency.value().getSimpleName());
             }
-            deps.add(dependency.get());
+
+            var module = dependency.get().getPublicModule();
+            if (module != null)
+            {
+                modules.add(module);
+            }
         }
 
         Plugin plugin;
-        try {
+        try
+        {
             plugin = clazz.getDeclaredConstructor().newInstance();
-        } catch (ThreadDeath e) {
+        }
+        catch (ThreadDeath e)
+        {
             throw e;
-        } catch (Throwable ex) {
+        }
+        catch (Throwable ex)
+        {
             throw new PluginInstantiationException(ex);
         }
 
-        try {
+        try
+        {
             Injector parent = Microbot.getInjector();
 
-            if (deps.size() > 1) {
-                List<Module> modules = new ArrayList<>(deps.size());
-                for (Plugin p : deps) {
-                    // Create a module for each dependency
-                    Module module = (Binder binder) ->
-                    {
-                        binder.bind((Class<Plugin>) p.getClass()).toInstance(p);
-                        binder.install(p);
-                    };
-                    modules.add(module);
-                }
-
-                // Create a parent injector containing all of the dependencies
-                parent = parent.createChildInjector(modules);
-            } else if (!deps.isEmpty()) {
-                // With only one dependency we can simply use its injector
-                parent = deps.get(0).injector;
-            }
-
-            // Create injector for the module
-            Module pluginModule = (Binder binder) ->
-            {
-                // Since the plugin itself is a module, it won't bind itself, so we'll bind it here
-                binder.bind(clazz).toInstance(plugin);
-                binder.install(plugin);
-            };
-            Injector pluginInjector = parent.createChildInjector(pluginModule);
+            modules.add(pluginModuleFactory.new PluginModule(plugin));
+            Injector pluginInjector = parent.createChildInjector(modules);
             plugin.injector = pluginInjector;
-        } catch (CreationException ex) {
+        }
+        catch (Throwable ex)
+        {
             throw new PluginInstantiationException(ex);
         }
 

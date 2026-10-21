@@ -104,6 +104,8 @@ public class MicrobotPluginManager {
     private final ConfigManager configManager;
     private final MicrobotApi microbotApi;
 
+    private final Map<String, String> blockedPlugins = new ConcurrentHashMap<>();
+
     private final Map<String, SideLoadedPluginDeployment> deployments = new ConcurrentHashMap<>();
     private final Set<String> reloadBlockedInternalNames = ConcurrentHashMap.newKeySet();
     private final Object sideLoadLock = new Object();
@@ -312,6 +314,15 @@ public class MicrobotPluginManager {
             log.error("Error calculating plugin hash", e);
             return "";
         }
+    }
+
+    public Map<String, String> getBlockedPlugins() {
+        return Collections.unmodifiableMap(blockedPlugins);
+    }
+
+    public MicrobotPluginHealth getPluginHealth(MicrobotPluginManifest manifest, @Nullable String version) {
+        return MicrobotPluginHealth.evaluate(manifest, version,
+                Rs2UiHelper.isClientVersionCompatible(manifest.getMinClientVersion()));
     }
 
     public static File[] createSideloadingFolder() {
