@@ -75,6 +75,7 @@ public class RuneLiteModule extends AbstractModule
 	private final boolean disableWalkerUpdate;
 	private final File sessionfile;
 	private final String profile;
+	private final String character;
 	private final boolean insecureWriteCredentials;
 	private final boolean noupdate;
 	private final String windowTitleOverride;
@@ -127,6 +128,7 @@ public class RuneLiteModule extends AbstractModule
 		bindConstant().annotatedWith(Names.named("disableWalkerUpdate")).to(disableWalkerUpdate);
 		bind(File.class).annotatedWith(Names.named("sessionfile")).toInstance(sessionfile);
 		bind(String.class).annotatedWith(Names.named("profile")).toProvider(Providers.of(profile));
+		bind(String.class).annotatedWith(Names.named("character")).toProvider(Providers.of(character));
 		bindConstant().annotatedWith(Names.named("insecureWriteCredentials")).to(insecureWriteCredentials);
 		bindConstant().annotatedWith(Names.named("noupdate")).to(noupdate);
 		bindConstant().annotatedWith(Names.named("windowTitleOverride")).to(windowTitleOverride);

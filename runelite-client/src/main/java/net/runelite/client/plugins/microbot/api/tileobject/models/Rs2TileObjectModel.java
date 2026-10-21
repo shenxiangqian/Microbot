@@ -112,7 +112,7 @@ public class Rs2TileObjectModel implements TileObject, IEntity {
     public String getName() {
         return Microbot.getClientThread().invoke(() -> {
             ObjectComposition composition = Microbot.getClient().getObjectDefinition(tileObject.getId());
-            if (composition.getImpostorIds() != null) {
+            if (composition != null && composition.getImpostorIds() != null) {
                 composition = composition.getImpostor();
             }
             if (composition == null)
@@ -169,8 +169,21 @@ public class Rs2TileObjectModel implements TileObject, IEntity {
     public ObjectComposition getObjectComposition() {
         return Microbot.getClientThread().invoke(() -> {
             ObjectComposition composition = Microbot.getClient().getObjectDefinition(tileObject.getId());
-            if (composition.getImpostorIds() != null) {
-                composition = composition.getImpostor();
+            if (composition != null && composition.getImpostorIds() != null) {
+                ObjectComposition impostor = composition.getImpostor();
+                if (impostor != null) {
+                    composition = impostor;
+                }
+            }
+            return composition;
+        });
+    }
+
+    private ObjectComposition getVisibleObjectComposition() {
+        return Microbot.getClientThread().invoke(() -> {
+            ObjectComposition composition = Microbot.getClient().getObjectDefinition(tileObject.getId());
+            if (composition != null && composition.getImpostorIds() != null) {
+                return composition.getImpostor();
             }
             return composition;
         });
@@ -208,17 +221,7 @@ public class Rs2TileObjectModel implements TileObject, IEntity {
             return Rs2GameObject.isReachable((GameObject) tileObject);
         }
 
-        // Walls, ground decorations and decorative objects occupy a single tile and carry no
-        // sizeX/sizeY, so the area helper above does not apply. Their own tile is the one to test.
-        //
-        // Rs2Tile.isTileReachable and NOT IEntity.super.isReachable(): the latter is
-        // Rs2Reachable.isReachable(p), which traverses FROM p and then asks whether p is in the
-        // result. That never consults the player, so it answers "is this tile part of some walkable
-        // region" rather than "can I get to it", and a walkable tile inside a locked room passes.
-        // isTileReachable traverses from Rs2Player.getLocalLocation() to the tile, which is the
-        // question being asked, and is the same check the GameObject branch above ends up making
-        // through Rs2GameObject.isReachable.
-        return Rs2Tile.isTileReachable(getWorldLocation());
+        return Rs2Tile.isTileObjectReachable(tileObject);
     }
 
     public boolean click() {
@@ -266,13 +269,12 @@ public class Rs2TileObjectModel implements TileObject, IEntity {
             String objName = "";
             if (action != null) {
                 //performance improvement to only get compoisiton if action has been specified
-                var objComp = getObjectComposition();
-                String[] actions;
-                if (objComp.getImpostorIds() != null && objComp.getImpostor() != null) {
-                    actions = objComp.getImpostor().getActions();
-                } else {
-                    actions = objComp.getActions();
+                var objComp = getVisibleObjectComposition();
+                if (objComp == null) {
+                    log.warn("Failed to interact with object {} - object not currently visible", getId());
+                    return false;
                 }
+                String[] actions = objComp.getActions();
 
                 for (int i = 0; i < actions.length; i++) {
                     if (actions[i] == null) continue;

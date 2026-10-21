@@ -72,6 +72,7 @@ import net.runelite.api.ItemContainer;
 import net.runelite.api.MenuAction;
 import net.runelite.api.MessageNode;
 import net.runelite.api.NPCComposition;
+import net.runelite.api.ParamID;
 import net.runelite.api.Player;
 import net.runelite.api.ScriptID;
 import net.runelite.api.Skill;
@@ -158,6 +159,10 @@ public class LootTrackerPlugin extends Plugin
 		ItemID.WILDY_LOOT_KEY3,
 		ItemID.WILDY_LOOT_KEY4
 	);
+
+	// Port/Courier tasks and bags
+	private static final String COURIER_TASK_REWARD_EVENT = "Courier tasks";
+	private static final String COURIER_TASK_COMPLETE_MESSAGE = "and complete your courier task!";
 
 	// Herbiboar loot handling
 	@VisibleForTesting
@@ -340,6 +345,7 @@ public class LootTrackerPlugin extends Plugin
 	private static final String CHAMBERS_OF_XERIC = "Chambers of Xeric";
 	private static final String THEATRE_OF_BLOOD = "Theatre of Blood";
 	private static final String TOMBS_OF_AMASCUT = "Tombs of Amascut";
+	private static final String THE_FRACTURED_ARCHIVE = "Fractured Archive";
 
 	private static final int FONT_OF_CONSUMPTION_REGION = 12106;
 	private static final String FONT_OF_CONSUMPTION_USE_MESSAGE = "You place the Unsired into the Font of Consumption...";
@@ -890,6 +896,16 @@ public class LootTrackerPlugin extends Plugin
 				metadata = new int[]{ raidLevel, teamSize, raidDamage };
 				chestLooted = true;
 				break;
+			case InterfaceID.TFA_CHESTS:
+				if (chestLooted)
+				{
+					return;
+				}
+
+				event = THE_FRACTURED_ARCHIVE;
+				container = client.getItemContainer(InventoryID.TFA_CHESTS);
+				chestLooted = true;
+				break;
 			case InterfaceID.MISC_COLLECTION:
 				event = "Kingdom of Miscellania";
 				container = client.getItemContainer(InventoryID.MISC_RESOURCES_COLLECTED);
@@ -935,12 +951,12 @@ public class LootTrackerPlugin extends Plugin
 
 		final Collection<ItemStack> items = toItemStacks(container);
 
-		if (config.showRaidsLootValue() && (event.equals(THEATRE_OF_BLOOD) || event.equals(CHAMBERS_OF_XERIC) || event.equals(TOMBS_OF_AMASCUT)))
+		if (config.showRaidsLootValue() && (event.equals(THEATRE_OF_BLOOD) || event.equals(CHAMBERS_OF_XERIC) || event.equals(TOMBS_OF_AMASCUT) || event.equals(THE_FRACTURED_ARCHIVE)))
 		{
 			long totalValue = items.stream()
 				.filter(item -> item.getId() > -1)
 				.mapToLong(item -> config.priceType() == LootTrackerPriceType.GRAND_EXCHANGE ?
-					(long) itemManager.getItemPrice(item.getId()) * item.getQuantity() :
+					itemManager.getItemPrice(item.getId()) * item.getQuantity() :
 					(long) itemManager.getItemComposition(item.getId()).getHaPrice() * item.getQuantity())
 				.sum();
 
@@ -1088,6 +1104,21 @@ public class LootTrackerPlugin extends Plugin
 				addLoot(GOLEM_CRAFTING_EVENT, -1, LootRecordType.EVENT, null, List.of(new ItemStack(itemId, 1)));
 			}
 			return;
+		}
+
+		if (message.endsWith(COURIER_TASK_COMPLETE_MESSAGE))
+		{
+			onInvChange((invItems, groundItems, removedItems) ->
+			{
+				int cnt = invItems.stream().
+					filter(item -> item.getId() != ItemID.SAILING_PAINT_SHARK).
+					mapToInt(ItemStack::getQuantity).
+					sum();
+				if (cnt > 0)
+				{
+					addLoot(COURIER_TASK_REWARD_EVENT, -1, LootRecordType.EVENT, null, invItems, cnt);
+				}
+			});
 		}
 
 		if (message.equals(HERBIBOAR_LOOTED_MESSAGE))
@@ -1292,12 +1323,19 @@ public class LootTrackerPlugin extends Plugin
 
 	private void countChangedItems(int itemId, Object metadata)
 	{
+		countChangedItems(itemId, metadata, null);
+	}
+
+	private void countChangedItems(int itemId, Object metadata, @Nullable String nameOverride)
+	{
 		onInvChange((invItems, groundItems, removedItems) ->
 		{
 			int cnt = removedItems.count(itemId);
 			if (cnt > 0)
 			{
-				String name = itemManager.getItemComposition(itemId).getMembersName();
+				String name = nameOverride != null ?
+					nameOverride :
+					itemManager.getItemComposition(itemId).getMembersName();
 				List<ItemStack> combined = new ArrayList<>();
 				combined.addAll(invItems);
 				combined.addAll(groundItems);
@@ -1452,6 +1490,20 @@ public class LootTrackerPlugin extends Plugin
 							}
 						});
 						break;
+					default:
+						int eventItemId = event.getItemId();
+						ItemComposition itemComposition = client.getItemDefinition(eventItemId);
+
+						if (itemComposition.getIntValue(ParamID.COURIER_BAG_TIER) >= 0)
+						{
+							String itemName = itemComposition.getMembersName();
+							// reward bag with location, else coin bag
+							if (itemName.indexOf(" (") > 0)
+							{
+								itemName = itemName.substring(0, itemName.indexOf(" ("));
+							}
+							countChangedItems(eventItemId, eventItemId, itemName);
+						}
 				}
 			}
 			else if (event.getMenuOption().equals("Pop"))
@@ -1707,7 +1759,7 @@ public class LootTrackerPlugin extends Plugin
 	private LootTrackerItem buildLootTrackerItem(int itemId, int quantity)
 	{
 		final ItemComposition itemComposition = itemManager.getItemComposition(itemId);
-		final int gePrice = itemManager.getItemPrice(itemId);
+		final long gePrice = itemManager.getItemPrice(itemId);
 		final int haPrice = itemComposition.getHaPrice();
 		final boolean ignored = ignoredItems.contains(itemComposition.getMembersName());
 
@@ -1768,7 +1820,7 @@ public class LootTrackerPlugin extends Plugin
 	{
 		long totalPrice = items.stream()
 			.mapToLong(item -> config.priceType() == LootTrackerPriceType.GRAND_EXCHANGE ?
-				(long) itemManager.getItemPrice(item.getId()) * item.getQuantity() :
+				itemManager.getItemPrice(item.getId()) * item.getQuantity() :
 				(long) itemManager.getItemComposition(item.getId()).getHaPrice() * item.getQuantity())
 			.sum();
 

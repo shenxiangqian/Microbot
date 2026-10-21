@@ -24,34 +24,10 @@ public class Rs2ActorModel implements Actor
     @Override
     public WorldView getWorldView()
     {
-        if (actor == null)
-        {
+        if (actor == null) {
             return null;
         }
         return Microbot.getClientThread().invoke(actor::getWorldView);
-    }
-
-    @Override
-    public boolean equals(Object other)
-    {
-        if (this == other)
-        {
-            return true;
-        }
-        if (actor == null || other == null || getClass() != other.getClass())
-        {
-            return false;
-        }
-        Rs2ActorModel that = (Rs2ActorModel) other;
-        return actor == that.actor;
-    }
-
-    @Override
-    public int hashCode()
-    {
-        return actor == null
-                ? System.identityHashCode(this)
-                : 31 * getClass().hashCode() + System.identityHashCode(actor);
     }
 
     @Override
@@ -98,6 +74,9 @@ public class Rs2ActorModel implements Actor
     @Override
     public WorldPoint getWorldLocation()
     {
+        if (actor == null) {
+            return null;
+        }
         return Microbot.getClientThread().invoke(() -> {
             WorldView worldView = actor.getWorldView();
             if (worldView != null && !worldView.isTopLevel()) {
@@ -110,6 +89,9 @@ public class Rs2ActorModel implements Actor
     @Override
     public LocalPoint getLocalLocation()
     {
+        if (actor == null) {
+            return null;
+        }
         return actor.getLocalLocation();
     }
 
@@ -128,6 +110,9 @@ public class Rs2ActorModel implements Actor
     @Override
     public int getAnimation()
     {
+        if (actor == null) {
+            return -1;
+        }
         return actor.getAnimation();
     }
 
@@ -478,6 +463,9 @@ public class Rs2ActorModel implements Actor
     }
 
     public WorldPoint projectActorLocationToMainWorld() {
+        if (actor == null) {
+            return null;
+        }
         WorldPoint actorLocation = actor.getWorldLocation();
         WorldView wv = actor.getWorldView();
         LocalPoint localPoint = LocalPoint.fromWorld(wv, actorLocation);

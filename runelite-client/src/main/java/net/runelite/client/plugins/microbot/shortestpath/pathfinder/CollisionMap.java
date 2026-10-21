@@ -17,8 +17,6 @@ import java.util.function.IntSupplier;
 
 @Slf4j
 public class CollisionMap {
-
-    private static final int SUPPRESSED_TRANSPORT_ENDPOINT_RADIUS = 3;
     // Enum.values() makes copies every time which hurts performance in the hotpath
     private static final OrdinalDirection[] ORDINAL_VALUES = OrdinalDirection.values();
 
@@ -258,11 +256,6 @@ public class CollisionMap {
     }
 
     public List<Node> getNeighbors(Node node, VisitedTiles visited, PathfinderConfig config, Set<Integer> targets) {
-        return getNeighbors(node, visited, config, targets, null, null);
-    }
-
-    public List<Node> getNeighbors(Node node, VisitedTiles visited, PathfinderConfig config, Set<Integer> targets,
-                                   Integer suppressedTransportOrigin, Integer suppressedTransportDestination) {
         final int x = WorldPointUtil.unpackWorldX(node.packedPosition);
         final int y = WorldPointUtil.unpackWorldY(node.packedPosition);
         final int z = WorldPointUtil.unpackWorldPlane(node.packedPosition);
@@ -290,10 +283,8 @@ public class CollisionMap {
                 if (isMoa) moaVisited++;
                 continue;
             }
-
-            int destinationPacked = WorldPointUtil.packWorldPoint(transport.getDestination());
-            if (isSuppressedTransportEdge(node.packedPosition, destinationPacked,
-                    suppressedTransportOrigin, suppressedTransportDestination)) {
+            if (transport.getDestination() != null && config.isLearnedBlockedTransport(
+                    node.packedPosition, WorldPointUtil.packWorldPoint(transport.getDestination()))) {
                 continue;
             }
 
@@ -390,13 +381,6 @@ public class CollisionMap {
      */
     public List<Node> getReverseNeighbors(Node node, VisitedTiles visitedBackward, PathfinderConfig config,
             Set<Integer> puzzleAllowPacked, Map<Integer, Set<Transport>> incomingByDestPacked) {
-        return getReverseNeighbors(node, visitedBackward, config, puzzleAllowPacked, incomingByDestPacked,
-                null, null);
-    }
-
-    public List<Node> getReverseNeighbors(Node node, VisitedTiles visitedBackward, PathfinderConfig config,
-            Set<Integer> puzzleAllowPacked, Map<Integer, Set<Transport>> incomingByDestPacked,
-            Integer suppressedTransportOrigin, Integer suppressedTransportDestination) {
         final int x = WorldPointUtil.unpackWorldX(node.packedPosition);
         final int y = WorldPointUtil.unpackWorldY(node.packedPosition);
         final int z = WorldPointUtil.unpackWorldPlane(node.packedPosition);
@@ -414,8 +398,7 @@ public class CollisionMap {
                 if (visitedBackward.get(originPacked)) {
                     continue;
                 }
-                if (isSuppressedTransportEdge(originPacked, node.packedPosition,
-                        suppressedTransportOrigin, suppressedTransportDestination)) {
+                if (config.isLearnedBlockedTransport(originPacked, node.packedPosition)) {
                     continue;
                 }
                 if (TransportType.isTeleport(transport.getType(), transport.getOrigin())) {
@@ -499,32 +482,5 @@ public class CollisionMap {
         }
 
         return neighbors;
-    }
-
-    static boolean isSuppressedTransportEdge(int originPacked, int destinationPacked,
-            Integer suppressedTransportOrigin, Integer suppressedTransportDestination) {
-        if (suppressedTransportOrigin == null || suppressedTransportDestination == null) {
-            return false;
-        }
-        WorldPoint origin = WorldPointUtil.unpackWorldPoint(originPacked);
-        WorldPoint destination = WorldPointUtil.unpackWorldPoint(destinationPacked);
-        WorldPoint blockedOrigin = WorldPointUtil.unpackWorldPoint(suppressedTransportOrigin);
-        WorldPoint blockedDestination = WorldPointUtil.unpackWorldPoint(suppressedTransportDestination);
-        if (!suppressionEndpointsAreDirectionallyDistinct(blockedOrigin, blockedDestination)) {
-            return false;
-        }
-        return samePlaneAndNear(origin, blockedOrigin)
-                && samePlaneAndNear(destination, blockedDestination);
-    }
-
-    private static boolean suppressionEndpointsAreDirectionallyDistinct(WorldPoint origin,
-                                                                         WorldPoint destination) {
-        return origin.getPlane() != destination.getPlane()
-                || origin.distanceTo2D(destination) > SUPPRESSED_TRANSPORT_ENDPOINT_RADIUS * 2;
-    }
-
-    private static boolean samePlaneAndNear(WorldPoint first, WorldPoint second) {
-        return first.getPlane() == second.getPlane()
-                && first.distanceTo2D(second) <= SUPPRESSED_TRANSPORT_ENDPOINT_RADIUS;
     }
 }

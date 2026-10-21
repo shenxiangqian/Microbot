@@ -399,6 +399,7 @@ dependencies {
     api(libs.rl.discord)
     api(libs.rl.awt)
     compileOnly(libs.rl.orange)
+    runtimeOnly(libs.rl.jagexauth)
 
     api(libs.slf4j.api)
     api(libs.logback.classic) {
@@ -532,10 +533,14 @@ tasks.processResources {
 
     val microbotVersion = microbotVersionProvider.get()
     val microbotCommit = providers.gradleProperty("microbot.commit.sha").getOrElse(commit.toString().trim())
+    val microbotBuildChannel = providers.gradleProperty("microbot.build.channel").getOrElse("")
+    val microbotBuildRepository = providers.gradleProperty("microbot.build.repository").getOrElse("")
 
     // Ensure task reruns when injected values change
     inputs.property("microbotVersion", microbotVersion)
     inputs.property("microbotCommit", microbotCommit)
+    inputs.property("microbotBuildChannel", microbotBuildChannel)
+    inputs.property("microbotBuildRepository", microbotBuildRepository)
 
     filesMatching("net/runelite/client/runelite.properties") {
         filter { it.replace("\${project.version}", project.version.toString()) }
@@ -543,6 +548,8 @@ tasks.processResources {
         filter { it.replace("\${git.dirty}", dirty.toString().isNotBlank().toString()) }
         filter { it.replace("\${microbot.version}", microbotVersion) }
         filter { it.replace("\${microbot.commit.sha}", microbotCommit) }
+        filter { it.replace("\${microbot.build.channel}", microbotBuildChannel) }
+        filter { it.replace("\${microbot.build.repository}", microbotBuildRepository) }
     }
 }
 
