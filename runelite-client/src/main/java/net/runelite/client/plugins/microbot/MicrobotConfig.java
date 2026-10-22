@@ -275,6 +275,19 @@ public interface MicrobotConfig extends Config
 		return 1800;
 	}
 
+	String keyAlertLinkToken = "alertLinkToken";
+	@ConfigItem(
+		keyName = keyAlertLinkToken,
+		name = "Alert link token",
+		description = "Filled in by Link to Microbot account in the Microbot Cloud panel",
+		secret = true,
+		hidden = true
+	)
+	default String alertLinkToken()
+	{
+		return "";
+	}
+
 	@ConfigSection(
 		name = "World hop limit",
 		description = "Pace world hops so the per-IP login limit (\"Too many login attempts\") is never reached",

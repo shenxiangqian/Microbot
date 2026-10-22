@@ -17,11 +17,15 @@ import net.runelite.client.events.OverlayMenuClicked;
 import net.runelite.client.events.RuneScapeProfileChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.microbot.alerts.ClientAlertReporter;
+import net.runelite.client.plugins.microbot.alerts.DeviceLinkFlow;
 import net.runelite.client.plugins.microbot.diagnostics.ScriptErrorReporter;
 import net.runelite.client.plugins.microbot.pouch.PouchOverlay;
 import net.runelite.client.plugins.microbot.ui.MicrobotPluginConfigurationDescriptor;
 import net.runelite.client.plugins.microbot.ui.MicrobotPluginListPanel;
+import net.runelite.client.plugins.microbot.ui.MicrobotHelpMenu;
 import net.runelite.client.plugins.microbot.ui.MicrobotTopLevelConfigPanel;
+import net.runelite.client.plugins.microbot.ui.MicrobotTour;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.death.Rs2Death;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
@@ -138,6 +142,18 @@ public class MicrobotPlugin extends Plugin
 
 	@Inject
 	private ScriptErrorReporter scriptErrorReporter;
+
+	@Inject
+	private ClientAlertReporter clientAlertReporter;
+
+	@Inject
+	private DeviceLinkFlow deviceLinkFlow;
+
+	@Inject
+	private MicrobotHelpMenu helpMenu;
+
+	@Inject
+	private MicrobotTour tour;
 	
 	// Widget change tracking for overlay cache invalidation
 	private volatile boolean widgetLayoutChanged = false;
@@ -165,6 +181,9 @@ public class MicrobotPlugin extends Plugin
 		final LoggerContext context = (LoggerContext) LoggerFactory.getILoggerFactory();
 		gameChatAttachment = gameChatAppender.install(context, microbotConfig::enableGameChatLogging);
 		scriptErrorAttachment = scriptErrorReporter.install(context);
+		eventBus.register(clientAlertReporter);
+		clientAlertReporter.start();
+		eventBus.register(deviceLinkFlow);
 
 		// Initialize the cached configuration in GameChatAppender
 		GameChatAppender.updateConfiguration(
@@ -207,6 +226,9 @@ public class MicrobotPlugin extends Plugin
 		clientToolbar.addNavigation(navButton);
 
 		new InputSelector(clientToolbar);
+		helpMenu.install();
+		eventBus.register(tour);
+		tour.install(navButton);
 
 		Microbot.getPouchScript().startUp();
 
@@ -228,8 +250,15 @@ public class MicrobotPlugin extends Plugin
 		overlayManager.remove(gembagOverlay);
 		overlayManager.remove(pouchOverlay);
 		clientToolbar.removeNavigation(navButton);
+		eventBus.unregister(tour);
+		tour.uninstall();
+		helpMenu.uninstall();
 		gameChatAttachment.remove();
 		scriptErrorAttachment.remove();
+		eventBus.unregister(clientAlertReporter);
+		clientAlertReporter.stop();
+		eventBus.unregister(deviceLinkFlow);
+		deviceLinkFlow.stop();
 		microbotVersionChecker.shutdown();
 	}
 
