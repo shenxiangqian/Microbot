@@ -1,0 +1,750 @@
+package net.runelite.client.plugins.microbot.walkerfst.banking;
+
+import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.gameval.ItemID;
+import net.runelite.api.gameval.VarbitID;
+import net.runelite.client.plugins.microbot.Microbot;
+import net.runelite.client.plugins.microbot.walkerfst.shortestpath.pathfinder.PathfinderFst;
+import net.runelite.client.plugins.microbot.walkerfst.leaguetransport.Rs2LeaguesTransportFst;
+import net.runelite.client.plugins.microbot.util.magic.Rs2Magic;
+import net.runelite.client.plugins.microbot.util.magic.Rs2Spells;
+import net.runelite.client.plugins.microbot.walkerfst.*;
+import net.runelite.client.plugins.microbot.walkerfst.shortestpath.PurchasableItemCatalogFst;
+import net.runelite.client.plugins.microbot.walkerfst.shortestpath.TransportFst;
+import net.runelite.client.plugins.microbot.walkerfst.shortestpath.TransportTypeFst;
+import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
+import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
+import net.runelite.client.plugins.microbot.util.bank.enums.BankLocation;
+import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
+import net.runelite.client.plugins.microbot.util.magic.Runes;
+import net.runelite.client.plugins.microbot.util.player.Rs2Player;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+@Slf4j
+public final class Rs2WalkerBankingPlannerFst {
+
+    private Rs2WalkerBankingPlannerFst() {
+    }
+
+    public static List<TransportFst> getTransportsForDestination(WorldPoint destination, boolean useBankItems, TransportTypeFst prefTransportType) {
+        if (destination == null) {
+            return new ArrayList<>();
+        }
+
+        boolean originalUseBankItems = Rs2PathApiFst.getPathfinderConfig().isUseBankItems();
+        try {
+            Rs2PathApiFst.getPathfinderConfig().setUseBankItems(useBankItems);
+            Rs2PathApiFst.getPathfinderConfig().refresh();
+            PathfinderFst pf = new PathfinderFst(Rs2PathApiFst.getPathfinderConfig(), Rs2Player.getWorldLocation(), destination);
+            pf.run();
+
+            List<WorldPoint> path = pf.getPath();
+            if (path.isEmpty()) {
+                log.debug("Unable to find path to destination: " + destination);
+                return new ArrayList<>();
+            }
+
+            List<TransportFst> transports = Rs2WalkerFst.getTransportsForPath(path, 0, prefTransportType, true);
+            transports.forEach(t -> log.debug("Transport found: " + t));
+            return transports;
+        } finally {
+            Rs2PathApiFst.getPathfinderConfig().setUseBankItems(originalUseBankItems);
+            Rs2PathApiFst.getPathfinderConfig().refresh();
+        }
+    }
+
+    /**
+     * Whether a plain {@link TransportType#TRANSPORT} takes part in bank planning.
+     *
+     * <p>Previously only currency-bearing ones did, so an item-gated obstacle — a machete for a
+     * jungle bush, a pickaxe for a rockfall, a Shantay pass — fell through
+     * {@link #hasRequiredTransportItems} to its catch-all {@code return true}, was never reported as
+     * missing, and was never withdrawn. That contradicted the pathfinder:
+     * {@code PathfinderConfig.hasRequiredItems} counts <em>bank</em> contents when
+     * {@code useBankItems} is set, so a route was planned through the obstacle on the strength of a
+     * banked item the planner then declined to fetch, stranding the walk at the obstacle.
+     *
+     * <p>This only widens which transports are <em>eligible</em>. Collection is path-scoped —
+     * {@link #getTransportsForDestination} pathfinds first and inspects only transports on the
+     * resulting route — so an item is fetched solely when the chosen route actually needs it.
+     */
+    public static boolean planningCoversPlainTransport(TransportFst transport) {
+        if (transport == null || transport.getType() != TransportTypeFst.TRANSPORT) {
+            return false;
+        }
+        return transport.getCurrencyAmount() > 0
+                || (transport.getItemIdRequirements() != null && !transport.getItemIdRequirements().isEmpty());
+    }
+
+    public static boolean hasRequiredTransportItems(TransportFst transport) {
+        if (transport == null) {
+            return false;
+        }
+
+        if (transport.getType() == TransportTypeFst.FAIRY_RING) {
+            return Rs2Inventory.hasItem(ItemID.DRAMEN_STAFF)
+                    || Rs2Equipment.isWearing(ItemID.DRAMEN_STAFF)
+                    || Rs2Inventory.hasItem(ItemID.LUNAR_MOONCLAN_LIMINAL_STAFF)
+                    || Rs2Equipment.isWearing(ItemID.LUNAR_MOONCLAN_LIMINAL_STAFF)
+                    || Microbot.getVarbitValue(VarbitID.LUMBRIDGE_DIARY_ELITE_COMPLETE) == 1;
+        } else if (transport.getType() == TransportTypeFst.TELEPORTATION_ITEM
+                || transport.getType() == TransportTypeFst.TELEPORTATION_SPELL
+                || transport.getType() == TransportTypeFst.CANOE
+                || transport.getType() == TransportTypeFst.BOAT
+                || transport.getType() == TransportTypeFst.CHARTER_SHIP
+                || transport.getType() == TransportTypeFst.SHIP
+                || transport.getType() == TransportTypeFst.MINECART
+                || transport.getType() == TransportTypeFst.MAGIC_CARPET
+                || planningCoversPlainTransport(transport)) {
+            if (transport.getType() == TransportTypeFst.TELEPORTATION_SPELL && transport.getDisplayInfo() != null) {
+                String spellName = transport.getDisplayInfo().contains(":")
+                        ? transport.getDisplayInfo().split(":")[0].trim()
+                        : transport.getDisplayInfo().trim();
+                boolean hasMultipleDestination = transport.getDisplayInfo().contains(":");
+                String displayInfo = hasMultipleDestination
+                        ? transport.getDisplayInfo().split(":")[0].trim().toLowerCase()
+                        : transport.getDisplayInfo();
+                log.debug("Looking for spell rune requirements for: '{}' - display info {}", spellName, displayInfo);
+                Rs2Spells rs2Spell = Rs2Magic.getRs2Spell(displayInfo);
+                return Rs2Magic.hasRequiredRunes(rs2Spell);
+            }
+            if (isCurrencyBasedTransport(transport.getType())
+                    && (transport.getItemIdRequirements() == null || transport.getItemIdRequirements().isEmpty())
+                    && transport.getCurrencyName() != null
+                    && !transport.getCurrencyName().isEmpty()
+                    && transport.getCurrencyAmount() > 0) {
+                int currencyItemId = getCurrencyItemId(transport.getCurrencyName());
+                return Rs2Inventory.count(currencyItemId) >= transport.getCurrencyAmount();
+            }
+            if (transport.getItemIdRequirements() == null || transport.getItemIdRequirements().isEmpty()) {
+                return true;
+            }
+
+            return transport.getItemIdRequirements()
+                    .stream()
+                    .flatMap(Collection::stream)
+                    .anyMatch(itemId -> Rs2Equipment.isWearing(itemId) || Rs2Inventory.hasItem(itemId));
+        }
+
+        return true;
+    }
+
+    public static List<TransportFst> getMissingTransports(List<TransportFst> transports) {
+        if (transports == null) {
+            return new ArrayList<>();
+        }
+
+        return transports.stream()
+                .filter(t -> !hasRequiredTransportItems(t))
+                .collect(Collectors.toList());
+    }
+
+    public static List<Rs2TransportEdgeFst> getMissingTransportEdges(
+            List<Rs2TransportEdgeFst> transports)
+    {
+        if (transports == null)
+        {
+            return List.of();
+        }
+        return transports.stream()
+                .filter(transport -> !hasRequiredTransportEdgeItems(transport))
+                .collect(Collectors.toUnmodifiableList());
+    }
+
+    public static boolean hasRequiredTransportEdgeItems(Rs2TransportEdgeFst transport)
+    {
+        if (transport == null)
+        {
+            return false;
+        }
+        if (transport.getType() == Rs2TransportTypeFst.FAIRY_RING)
+        {
+            return hasFairyRingAccess();
+        }
+        if (!isBankPlanningTransport(transport))
+        {
+            return true;
+        }
+        if (isSpellTransport(transport) && transport.getDisplayInfo() != null)
+        {
+            if (!transport.getItemRequirements().isEmpty())
+            {
+                return Rs2TransportItemRequirementFst.selectProviders(
+                                transport.getItemRequirements(),
+                                Rs2WalkerBankingPlannerFst::carriedRequirementItemQuantity,
+                                itemId -> Rs2Equipment.isWearing(itemId) || Rs2Inventory.hasItem(itemId),
+                                itemId -> Rs2Equipment.isWearing(itemId) || Rs2Inventory.hasItem(itemId))
+                        .isPresent();
+            }
+            Rs2Spells rs2Spell = Rs2Magic.getRs2Spell(spellLookupName(transport.getDisplayInfo()));
+            return rs2Spell != null && Rs2Magic.hasRequiredRunes(rs2Spell);
+        }
+        if (isCurrencyBasedTransport(transport.getType())
+                && transport.getItemRequirements().isEmpty()
+                && !transport.getCurrencyName().isEmpty()
+                && transport.getCurrencyAmount() > 0)
+        {
+            int currencyItemId = getCurrencyItemId(transport.getCurrencyName());
+            return currencyItemId > 0
+                    && Rs2Inventory.itemQuantity(currencyItemId) >= transport.getCurrencyAmount();
+        }
+        return transport.getItemRequirements().stream()
+                .allMatch(requirement -> requirement.isSatisfiedBy(
+                        Rs2WalkerBankingPlannerFst::carriedItemQuantity));
+    }
+
+    private static int carriedRequirementItemQuantity(int itemId)
+    {
+        Runes rune = Runes.byItemId(itemId);
+        if (rune == null)
+        {
+            return carriedItemQuantity(itemId);
+        }
+        return Rs2Magic.getRunes().getOrDefault(rune, 0);
+    }
+
+    private static String spellLookupName(String displayInfo)
+    {
+        return displayInfo.contains(":")
+                ? displayInfo.split(":", 2)[0].trim().toLowerCase(Locale.ROOT)
+                : displayInfo.trim().toLowerCase(Locale.ROOT);
+    }
+
+
+    private static int carriedItemQuantity(int itemId) {
+        int quantity = Rs2Inventory.itemQuantity(itemId);
+        net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel equipped = Rs2Equipment.get(itemId);
+        if (equipped != null) {
+            quantity += Math.max(1, equipped.getQuantity());
+        }
+        return quantity;
+    }
+
+    private static boolean isBankPlanningTransport(Rs2TransportEdgeFst transport)
+    {
+        Rs2TransportTypeFst type = transport.getType();
+        return type == Rs2TransportTypeFst.TELEPORTATION_ITEM
+                || isSpellTransport(transport)
+                || type == Rs2TransportTypeFst.CANOE
+                || type == Rs2TransportTypeFst.BOAT
+                || type == Rs2TransportTypeFst.CHARTER_SHIP
+                || type == Rs2TransportTypeFst.SHIP
+                || type == Rs2TransportTypeFst.MINECART
+                || type == Rs2TransportTypeFst.MAGIC_CARPET
+                || planningCoversPlainTransportEdge(transport);
+    }
+
+    static boolean planningCoversPlainTransportEdge(Rs2TransportEdgeFst transport)
+    {
+        return transport != null
+                && transport.getType() == Rs2TransportTypeFst.TRANSPORT
+                && (transport.getCurrencyAmount() > 0 || !transport.getItemRequirements().isEmpty());
+    }
+
+    private static boolean isSpellTransport(Rs2TransportEdgeFst transport)
+    {
+        return transport.getType() == Rs2TransportTypeFst.TELEPORTATION_SPELL;
+    }
+
+    private static boolean hasFairyRingAccess()
+    {
+        return Rs2Inventory.hasItem(ItemID.DRAMEN_STAFF)
+                || Rs2Equipment.isWearing(ItemID.DRAMEN_STAFF)
+                || Rs2Inventory.hasItem(ItemID.LUNAR_MOONCLAN_LIMINAL_STAFF)
+                || Rs2Equipment.isWearing(ItemID.LUNAR_MOONCLAN_LIMINAL_STAFF)
+                || Microbot.getVarbitValue(VarbitID.LUMBRIDGE_DIARY_ELITE_COMPLETE) == 1;
+    }
+
+    public static Map<Integer, Integer> getMissingTransportItemIdsWithQuantities(List<TransportFst> transports) {
+        if (transports == null) {
+            return new HashMap<>();
+        }
+
+        Map<Integer, Integer> itemQuantityMap = new HashMap<>();
+
+        transports.forEach(transport -> {
+            if (transport.getType() == TransportTypeFst.TELEPORTATION_SPELL) {
+                Map<Integer, Integer> spellRuneRequirements = getSpellRuneRequirements(transport);
+                if (!spellRuneRequirements.isEmpty()) {
+                    spellRuneRequirements.forEach((runeItemId, requiredQuantity) -> {
+                        try {
+                            int bankQuantity = Rs2Bank.count(runeItemId);
+                            int currentQuantity = itemQuantityMap.getOrDefault(runeItemId, 0);
+                            itemQuantityMap.put(runeItemId, currentQuantity + requiredQuantity);
+                            log.debug("Added teleportation spell rune requirement: {} (ID: {}) x{} (bank has: {} short={})",
+                                    runeItemId, runeItemId, requiredQuantity, bankQuantity, bankQuantity < requiredQuantity);
+                        } catch (Exception e) {
+                            log.debug("Could not check bank for rune " + runeItemId + ": " + e.getMessage());
+                        }
+                    });
+                }
+                return;
+            }
+
+            // Pure currency transports (charter fares, magic carpets, the Shantay 5-coin gate row) have
+            // EMPTY itemIdRequirements, so the item loop below never runs for them — their coins were
+            // never added to the withdrawal map. The transport was correctly detected as missing, but the
+            // fare was never fetched: the post-bank replan (inventory-only) then dropped the transport and
+            // produced the long overland route ("banked walking does not withdraw gold"). Sum fares across
+            // every currency transport on the route.
+            if (isCurrencyBasedTransport(transport.getType())
+                    && transport.getCurrencyAmount() > 0
+                    && (transport.getItemIdRequirements() == null || transport.getItemIdRequirements().isEmpty())) {
+                int currencyItemId = getCurrencyItemId(transport.getCurrencyName());
+                if (currencyItemId > 0) {
+                    int currentQuantity = itemQuantityMap.getOrDefault(currencyItemId, 0);
+                    itemQuantityMap.put(currencyItemId, currentQuantity + transport.getCurrencyAmount());
+                    log.debug("Added currency fare requirement: itemId={} x{} for {}",
+                            currencyItemId, transport.getCurrencyAmount(), transport.getType());
+                }
+                return;
+            }
+
+            if (transport.getItemIdRequirements() != null) {
+                for (Set<Integer> alternativeItems : transport.getItemIdRequirements()) {
+                    int requiredQuantity = (isCurrencyBasedTransport(transport.getType()) && transport.getCurrencyAmount() > 0)
+                            ? transport.getCurrencyAmount()
+                            : 1;
+
+                    Integer preferredItemId = null;
+                    int preferredBankQuantity = 0;
+                    for (Integer itemId : alternativeItems) {
+                        int bankQuantity = 0;
+                        try {
+                            bankQuantity = Rs2Bank.count(itemId);
+                        } catch (Exception e) {
+                            log.debug("Could not check bank for item " + itemId + ": " + e.getMessage());
+                        }
+                        if (preferredItemId == null || bankQuantity > preferredBankQuantity) {
+                            preferredItemId = itemId;
+                            preferredBankQuantity = bankQuantity;
+                        }
+                    }
+
+                    // The bank holds none of the alternatives — withdrawing the item is impossible.
+                    // If one of them is vendor-purchasable at its transport (the Shantay pass
+                    // pattern), withdraw the fare instead so the buy-at-transport step can run.
+                    if (preferredItemId != null && preferredBankQuantity == 0) {
+                        PurchasableItemCatalogFst.PurchasableItem purchasable = alternativeItems.stream()
+                                .map(PurchasableItemCatalogFst::byItemId)
+                                .filter(java.util.Objects::nonNull)
+                                .findFirst()
+                                .orElse(null);
+                        int currencyItemId = purchasable == null ? -1 : getCurrencyItemId(purchasable.costCurrencyName);
+                        if (currencyItemId > 0) {
+                            // One fare per required ITEM. requiredQuantity above is a currency
+                            // amount for currency-based rows, so it must not be used as a count.
+                            int itemsNeeded = isCurrencyBasedTransport(transport.getType()) ? 1 : requiredQuantity;
+                            int fare = purchasable.costAmount * itemsNeeded;
+                            itemQuantityMap.merge(currencyItemId, fare, Integer::sum);
+                            log.debug("Transport item {} not banked but purchasable — withdrawing fare {} x{} instead",
+                                    purchasable.itemId, purchasable.costCurrencyName, fare);
+                            break;
+                        }
+                    }
+                    if (preferredItemId != null) {
+                        int currentQuantity = itemQuantityMap.getOrDefault(preferredItemId, 0);
+                        itemQuantityMap.put(preferredItemId, currentQuantity + requiredQuantity);
+                        log.debug("Added transport item requirement: itemId={} x{} (bank has: {} short={})",
+                                preferredItemId, requiredQuantity, preferredBankQuantity, preferredBankQuantity < requiredQuantity);
+                    }
+                    break;
+                }
+            }
+        });
+
+        return itemQuantityMap;
+    }
+
+    public static List<Integer> getMissingTransportItemIds(List<TransportFst> transports) {
+        return new ArrayList<>(getMissingTransportItemIdsWithQuantities(transports).keySet());
+    }
+
+    public static TransportRouteAnalysisFst compareRoutes(WorldPoint startPoint, WorldPoint target) {
+        long totalStartTime = System.nanoTime();
+        StringBuilder performanceLog = new StringBuilder();
+        performanceLog.append("\n\t=== compareRoutes Performance Analysis ===\n");
+        if (target == null) {
+            return new TransportRouteAnalysisFst(new ArrayList<>(), null, null, new ArrayList<>(), new ArrayList<>(), "Target location is null");
+        }
+
+        if (startPoint == null) {
+            startPoint = Rs2Player.getWorldLocation();
+        }
+
+        if (startPoint == null) {
+            return new TransportRouteAnalysisFst(new ArrayList<>(), null, null, new ArrayList<>(), new ArrayList<>(), "Cannot determine starting location");
+        }
+
+        try {
+            performanceLog.append("\tStart Point: ").append(startPoint).append(", Target: ").append(target).append("\n");
+            long directPathStartTime = System.nanoTime();
+            List<WorldPoint> directPath = Rs2WalkerFst.getWalkPath(startPoint, target);
+            long directPathEndTime = System.nanoTime();
+            double directPathTimeMs = (directPathEndTime - directPathStartTime) / 1_000_000.0;
+
+            int directDistance = Rs2WalkerFst.getTotalTilesFromPath(directPath, target);
+            performanceLog.append("\t-Direct path calculation: ").append(String.format("%.2f ms", directPathTimeMs))
+                    .append(" (").append(directPath.size()).append(" waypoints, ").append(directDistance).append(" tiles)\n");
+
+            BankLocation nearestBank = null;
+            List<WorldPoint> pathToBank = new ArrayList<>();
+            List<WorldPoint> pathFromBankToTarget = new ArrayList<>();
+            int bankingRouteDistance = -1;
+
+            try {
+                boolean originalUseBankItems = Rs2PathApiFst.getPathfinderConfig().isUseBankItems();
+                try {
+                    Rs2PathApiFst.getPathfinderConfig().setUseBankItems(true);
+                    Rs2PathApiFst.getPathfinderConfig().refresh(target);
+
+                    performanceLog.append("\t-Bank items available: ").append(Rs2Bank.bankItems().size()).append("\n");
+
+                    long bankSearchStartTime = System.nanoTime();
+                    nearestBank = Rs2Bank.getNearestBank(startPoint);
+                    long bankSearchEndTime = System.nanoTime();
+                    double bankSearchTimeMs = (bankSearchEndTime - bankSearchStartTime) / 1_000_000.0;
+
+                    if (nearestBank != null) {
+                        WorldPoint bankLocation = nearestBank.getWorldPoint();
+                        performanceLog.append("\t-Nearest bank search: ").append(String.format("%.2f ms", bankSearchTimeMs));
+                        performanceLog.append("\t -> Found: ").append(nearestBank).append(" at ").append(bankLocation).append("\n");
+
+                        long pathToBankStartTime = System.nanoTime();
+                        pathToBank = Rs2WalkerFst.getWalkPath(startPoint, bankLocation);
+                        long pathToBankEndTime = System.nanoTime();
+                        double pathToBankTimeMs = (pathToBankEndTime - pathToBankStartTime) / 1_000_000.0;
+                        int distanceToBank = Rs2WalkerFst.getTotalTilesFromPath(pathToBank, bankLocation);
+
+                        long pathFromBankStartTime = System.nanoTime();
+                        pathFromBankToTarget = Rs2WalkerFst.getWalkPath(bankLocation, target);
+                        long pathFromBankEndTime = System.nanoTime();
+                        double pathFromBankTimeMs = (pathFromBankEndTime - pathFromBankStartTime) / 1_000_000.0;
+                        List<TransportFst> bankLegTransports = Rs2WalkerFst.getTransportsForPath(
+                                pathFromBankToTarget, 0, TransportTypeFst.TELEPORTATION_SPELL, true);
+                        long spellCount = bankLegTransports.stream()
+                                .filter(t -> t.getType() == TransportTypeFst.TELEPORTATION_SPELL)
+                                .count();
+                        long itemCount = bankLegTransports.stream()
+                                .filter(t -> t.getType() == TransportTypeFst.TELEPORTATION_ITEM)
+                                .count();
+                        int distanceFromBankRaw = Rs2WalkerFst.getTotalTilesFromPath(pathFromBankToTarget, target);
+                        int distanceFromBank = effectiveDistanceFromBank(pathFromBankToTarget, distanceFromBankRaw);
+
+                        performanceLog.append("\t-Path to bank calculation: ").append(String.format("%.2f ms", pathToBankTimeMs))
+                                .append(" (").append(pathToBank.size()).append(" waypoints, ").append(distanceToBank).append(" tiles)\n");
+                        performanceLog.append("\t-Path from bank to target with banked items: ").append(String.format("%.2f ms", pathFromBankTimeMs))
+                                .append(" (").append(pathFromBankToTarget.size()).append(" waypoints, ").append(distanceFromBank).append(" tiles)\n");
+                        performanceLog.append("\t-Bank leg transports: total=").append(bankLegTransports.size())
+                                .append(" spells=").append(spellCount)
+                                .append(" items=").append(itemCount)
+                                .append("\n");
+                        TransportFst firstSpellTransport = bankLegTransports.stream()
+                                .filter(t -> t.getType() == TransportTypeFst.TELEPORTATION_SPELL)
+                                .findFirst()
+                                .orElse(null);
+                        if (firstSpellTransport != null) {
+                            performanceLog.append("\t-First bank-leg spell transport: ")
+                                    .append(firstSpellTransport.getDisplayInfo())
+                                    .append(" -> ")
+                                    .append(firstSpellTransport.getDestination())
+                                    .append("\n");
+                        }
+                        WebWalkLogFst.spInfo("compare_bank_leg | total={} spells={} items={} firstSpell={}",
+                                bankLegTransports.size(),
+                                spellCount,
+                                itemCount,
+                                firstSpellTransport == null
+                                        ? "none"
+                                        : firstSpellTransport.getDisplayInfo() + " -> " + firstSpellTransport.getDestination());
+                        if (distanceFromBankRaw != distanceFromBank) {
+                            performanceLog.append("\t-Adjusted bank leg for immediate teleport: raw=")
+                                    .append(distanceFromBankRaw)
+                                    .append(" adjusted=")
+                                    .append(distanceFromBank)
+                                    .append(" tiles\n");
+                        }
+
+                        if (distanceToBank != -1
+                                && distanceFromBank != -1
+                                && distanceToBank != Integer.MAX_VALUE
+                                && distanceFromBank != Integer.MAX_VALUE) {
+                            bankingRouteDistance = distanceToBank + distanceFromBank;
+                        }
+                        performanceLog.append("\t-Total banking route distance: ").append(bankingRouteDistance).append(" tiles\n");
+                    } else {
+                        performanceLog.append("\t-Nearest bank search: ").append(String.format("%.2f ms", bankSearchTimeMs))
+                                .append("\t -> No accessible bank found\n");
+                    }
+                } finally {
+                    Rs2PathApiFst.getPathfinderConfig().setUseBankItems(originalUseBankItems);
+                    Rs2PathApiFst.getPathfinderConfig().refresh();
+                }
+            } catch (Exception e) {
+                performanceLog.append("Banking route calculation failed: ").append(e.getMessage()).append("\n");
+                log.debug("Could not calculate banking route: " + e.getMessage());
+            }
+
+            long totalEndTime = System.nanoTime();
+            double totalTimeMs = (totalEndTime - totalStartTime) / 1_000_000.0;
+            performanceLog.append("\t=== Total compareRoutes time: ").append(String.format("%.2f ms", totalTimeMs)).append(" ===\n");
+
+            if (bankingRouteDistance == -1) {
+                performanceLog.append("\tResult: Direct route only (banking route unavailable)\n");
+                WebWalkLogFst.compareDetail(performanceLog.toString());
+                WebWalkLogFst.compareSummary(totalTimeMs, directDistance, -1, "direct_only_bank_unavailable");
+                return new TransportRouteAnalysisFst(directPath, null, null, new ArrayList<>(), new ArrayList<>(),
+                        "Direct route only (banking route unavailable)");
+            }
+
+            final boolean tie = directDistance == bankingRouteDistance;
+            final boolean directStrictlyFaster = directDistance < bankingRouteDistance;
+            final boolean preferTransportToTarget = Rs2PathApiFst.override("preferTransportToTarget", false);
+            final String recommendation;
+            final String verdictOneLine;
+            if (tie) {
+                if (preferTransportToTarget) {
+                    recommendation = String.format("\tSame tile distance (%d); prefer banking route (prefer transport to target enabled)", directDistance);
+                    verdictOneLine = String.format("tie %dt (prefer bank: transport-to-target)", directDistance);
+                } else {
+                    recommendation = String.format("\tSame tile distance (%d); prefer direct (no bank hop)", directDistance);
+                    verdictOneLine = String.format("tie %dt (prefer direct)", directDistance);
+                }
+            } else if (directStrictlyFaster) {
+                recommendation = String.format("\tDirect route is faster (%d vs %d tiles)", directDistance, bankingRouteDistance);
+                verdictOneLine = String.format("direct faster %dt vs %dt", directDistance, bankingRouteDistance);
+            } else {
+                recommendation = String.format("\tBanking route is faster (%d vs %d tiles)", bankingRouteDistance, directDistance);
+                verdictOneLine = String.format("bank faster %dt vs %dt", bankingRouteDistance, directDistance);
+            }
+
+            performanceLog.append("\tResult:\n\t\t ").append(recommendation).append("\n");
+            WebWalkLogFst.compareDetail(performanceLog.toString());
+            WebWalkLogFst.compareSummary(totalTimeMs, directDistance, bankingRouteDistance, verdictOneLine);
+
+            return new TransportRouteAnalysisFst(directPath,
+                    nearestBank, nearestBank != null ? nearestBank.getWorldPoint() : null, pathToBank, pathFromBankToTarget, recommendation,
+                    directDistance, bankingRouteDistance);
+        } catch (Exception e) {
+            long totalEndTime = System.nanoTime();
+            double totalTimeMs = (totalEndTime - totalStartTime) / 1_000_000.0;
+            performanceLog.append("ERROR after ").append(String.format("%.2f ms", totalTimeMs)).append(": ").append(e.getMessage()).append("\n");
+            WebWalkLogFst.compareDetail(performanceLog.toString());
+            WebWalkLogFst.compareError(totalTimeMs, target, e.getMessage());
+            return new TransportRouteAnalysisFst(new ArrayList<>(), null, null, new ArrayList<>(), new ArrayList<>(), "Error calculating routes: " + e.getMessage());
+        }
+    }
+
+    private static Map<Integer, Integer> getSpellRuneRequirements(TransportFst transport) {
+        Map<Integer, Integer> runeRequirements = new HashMap<>();
+        if (transport.getType() != TransportTypeFst.TELEPORTATION_SPELL || transport.getDisplayInfo() == null) {
+            return runeRequirements;
+        }
+        try {
+            String spellName = transport.getDisplayInfo().contains(":")
+                    ? transport.getDisplayInfo().split(":")[0].trim()
+                    : transport.getDisplayInfo().trim();
+            boolean hasMultipleDestination = transport.getDisplayInfo().contains(":");
+            String displayInfo = hasMultipleDestination
+                    ? transport.getDisplayInfo().split(":")[0].trim().toLowerCase()
+                    : transport.getDisplayInfo();
+            log.debug("Looking for spell rune requirements for: '{}' - display info {}", spellName, displayInfo);
+            Rs2Spells rs2Spell = Rs2Magic.getRs2Spell(displayInfo);
+            if (rs2Spell == null) {
+                return runeRequirements;
+            }
+            Map<Runes, Integer> requiredRunes = Rs2Magic.getRequiredRunes(rs2Spell, 1, true);
+            List<Runes> elementalRunes = rs2Spell.getElementalRunes();
+            log.debug("Spell '{}' requires {} runes, including {} elemental runes",
+                    spellName, requiredRunes.size(), elementalRunes.size());
+            requiredRunes.forEach((rune, quantity) -> {
+                int runeItemId = rune.getItemId();
+                runeRequirements.put(runeItemId, quantity);
+                log.debug("Spell '{}' requires {} x {} (ID: {})",
+                        spellName, quantity, rune.name(), runeItemId);
+            });
+        } catch (Exception e) {
+            log.warn("Error getting spell rune requirements for transport '{}': {}",
+                    transport.getDisplayInfo(), e.getMessage());
+        }
+
+        return runeRequirements;
+    }
+
+    /**
+     * Plan the destination and retain only the immutable transport edges selected by that search.
+     *
+     * <p>This is the planner-independent banking contract. In particular, it does not rescan the
+     * mutable transport catalog by origin/destination after pathfinding, so two transports sharing an
+     * edge cannot be confused.</p>
+     */
+    public static List<Rs2TransportEdgeFst> getTransportEdgesForDestination(
+            WorldPoint destination, boolean useBankItems)
+    {
+        if (destination == null)
+        {
+            return List.of();
+        }
+        WorldPoint start = Rs2Player.getWorldLocation();
+        if (start == null)
+        {
+            log.debug("Unable to plan transport edges without a player location");
+            return List.of();
+        }
+
+        Rs2RouteResultFst route = Rs2PathApiFst.plan(
+                Rs2RouteRequestFst.to(start, destination)
+                        .withBankItems(useBankItems));
+        if (route.getPath().isEmpty())
+        {
+            log.debug("Unable to find path to destination: {}", destination);
+            return List.of();
+        }
+
+        List<Rs2TransportEdgeFst> selected = route.getTransportSteps().stream()
+                .map(Rs2RouteStepFst::getTransport)
+                .map(transport -> transport.orElseThrow(
+                        () -> new IllegalStateException("typed route step has no transport metadata")))
+                .collect(Collectors.toList());
+        List<Rs2TransportEdgeFst> transports = applyTransportEdgeFiltering(selected);
+        transports.forEach(transport -> log.debug("Transport edge found: {} -> {} ({})",
+                transport.getOrigin(), transport.getDestination(), transport.getType()));
+        return transports;
+    }
+
+    /** Filter selected immutable route edges down to transports relevant to bank preparation. */
+    public static List<Rs2TransportEdgeFst> applyTransportEdgeFiltering(
+            List<Rs2TransportEdgeFst> transports)
+    {
+        if (transports == null)
+        {
+            return List.of();
+        }
+        return transports.stream()
+                .filter(transport -> transport.getType() == Rs2TransportTypeFst.TELEPORTATION_ITEM
+                        || transport.getType() == Rs2TransportTypeFst.FAIRY_RING
+                        || transport.getType() == Rs2TransportTypeFst.TELEPORTATION_SPELL
+                        || transport.getType() == Rs2TransportTypeFst.CANOE
+                        || transport.getType() == Rs2TransportTypeFst.BOAT
+                        || transport.getType() == Rs2TransportTypeFst.CHARTER_SHIP
+                        || transport.getType() == Rs2TransportTypeFst.SHIP
+                        || transport.getType() == Rs2TransportTypeFst.MINECART
+                        || transport.getType() == Rs2TransportTypeFst.MAGIC_CARPET
+                        || transport.getType() == Rs2TransportTypeFst.SPIRIT_TREE
+                        || planningCoversPlainTransportEdge(transport)
+                        || transport.getType() == Rs2TransportTypeFst.SEASONAL_TRANSPORT
+                        && Rs2LeaguesTransportFst.isLeaguesActive()
+                        && transport.getDisplayInfo() != null
+                        && transport.getDisplayInfo().toLowerCase(Locale.ROOT)
+                        .startsWith("leagues area:"))
+                .collect(Collectors.toUnmodifiableList());
+    }
+
+    /** Package-private so the planning tests can select the same rows this collector accepts. */
+    static boolean isCurrencyBasedTransport(TransportTypeFst transportType) {
+        return transportType == TransportTypeFst.BOAT
+                || transportType == TransportTypeFst.CHARTER_SHIP
+                || transportType == TransportTypeFst.SHIP
+                || transportType == TransportTypeFst.MINECART
+                || transportType == TransportTypeFst.MAGIC_CARPET
+                || transportType == TransportTypeFst.TRANSPORT;
+    }
+
+    static boolean isCurrencyBasedTransport(Rs2TransportTypeFst transportType)
+    {
+        return transportType == Rs2TransportTypeFst.BOAT
+                || transportType == Rs2TransportTypeFst.CHARTER_SHIP
+                || transportType == Rs2TransportTypeFst.SHIP
+                || transportType == Rs2TransportTypeFst.MINECART
+                || transportType == Rs2TransportTypeFst.MAGIC_CARPET
+                || transportType == Rs2TransportTypeFst.TRANSPORT;
+    }
+
+    private static int getCurrencyItemId(String currencyName) {
+        if (currencyName == null || currencyName.trim().isEmpty()) {
+            return -1;
+        }
+
+        String currency = currencyName.trim().toLowerCase();
+        switch (currency) {
+            case "coins":
+                return ItemID.COINS;
+            case "ecto-token":
+                return ItemID.ECTOTOKEN;
+            default:
+                log.warn("Unknown currency type: {}", currencyName);
+                return -1;
+        }
+    }
+
+    /**
+     * Score bank->target distance in a way that reflects "bank then immediate teleport" behavior.
+     * For originless TELEPORTATION_ITEM / TELEPORTATION_SPELL edges, trim pre-teleport walking
+     * from the bank leg metric and keep the post-teleport tail.
+     */
+    private static int effectiveDistanceFromBank(List<WorldPoint> pathFromBankToTarget, int rawDistance) {
+        if (pathFromBankToTarget == null || pathFromBankToTarget.isEmpty() || rawDistance == Integer.MAX_VALUE) {
+            return rawDistance;
+        }
+
+        List<TransportFst> transports = Rs2WalkerFst.getTransportsForPath(pathFromBankToTarget, 0, TransportTypeFst.TELEPORTATION_SPELL, true);
+        if (transports.isEmpty()) {
+            return rawDistance;
+        }
+
+        // Use first transport that the bank->target path actually consumes and model:
+        // walk_to_transport + transport_hop + post_transport_tail.
+        TransportFst firstTransport = transports.get(0);
+        int modeledDistance = transportModeledDistance(pathFromBankToTarget, firstTransport, rawDistance);
+        if (modeledDistance == Integer.MAX_VALUE) {
+            return rawDistance;
+        }
+        return Math.min(rawDistance, modeledDistance);
+    }
+
+    private static boolean isImmediateBankTeleport(TransportFst transport) {
+        if (transport == null || transport.getOrigin() != null) {
+            return false;
+        }
+        return transport.getType() == TransportTypeFst.TELEPORTATION_ITEM
+                || transport.getType() == TransportTypeFst.TELEPORTATION_SPELL;
+    }
+
+    private static int transportModeledDistance(List<WorldPoint> pathFromBankToTarget, TransportFst transport, int fallbackRawDistance) {
+        if (transport == null || pathFromBankToTarget == null || pathFromBankToTarget.isEmpty()) {
+            return fallbackRawDistance;
+        }
+
+        WorldPoint destination = transport.getDestination();
+        if (destination == null) {
+            return fallbackRawDistance;
+        }
+        int destinationIndex = pathFromBankToTarget.indexOf(destination);
+        if (destinationIndex < 0) {
+            return fallbackRawDistance;
+        }
+
+        int originIndex;
+        if (isImmediateBankTeleport(transport)) {
+            originIndex = 0;
+        } else {
+            WorldPoint origin = transport.getOrigin();
+            originIndex = origin == null ? 0 : pathFromBankToTarget.indexOf(origin);
+            if (originIndex < 0) {
+                originIndex = 0;
+            }
+        }
+
+        if (destinationIndex < originIndex) {
+            return fallbackRawDistance;
+        }
+
+        int walkToTransport = Math.max(0, originIndex);
+        int transportHop = 1;
+        int postTransportTail = Math.max(0, pathFromBankToTarget.size() - destinationIndex);
+        return walkToTransport + transportHop + postTransportTail;
+    }
+}
