@@ -1,9 +1,6 @@
 package net.runelite.client.plugins.microbot.util.walker.transport;
 
-import java.util.function.BooleanSupplier;
-import java.util.function.Function;
 import net.runelite.api.coords.WorldPoint;
-import net.runelite.client.plugins.microbot.util.dialogues.Rs2Dialogue;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.walker.shared.Rs2WalkerProgress;
 
@@ -13,54 +10,15 @@ public final class Rs2WalkerTransportAwaits {
     private Rs2WalkerTransportAwaits() {
     }
 
-    public static boolean didCurrentTileTransportProgress(WorldPoint before, WorldPoint expectedDestination,
-                                                          WorldPoint target, boolean dialogueWasOpen) {
+    public static boolean didCurrentTileTransportProgress(WorldPoint before, WorldPoint expectedDestination, WorldPoint target) {
         if (before == null) {
-            return waitForProgressWithoutPositionSnapshot(dialogueWasOpen, Rs2Dialogue::isInDialogue);
+            return false;
         }
-        boolean progressedDuringWait = sleepUntil(() -> {
+        sleepUntil(() -> {
             WorldPoint now = Rs2Player.getWorldLocation();
-            return hasTransportProgress(before, now, expectedDestination, target,
-                    dialogueWasOpen, Rs2Dialogue.isInDialogue());
+            return Rs2WalkerProgress.hasMovementOrProgress(before, now, expectedDestination, target);
         }, 1800);
         WorldPoint after = Rs2Player.getWorldLocation();
-        return resolveTransportProgress(progressedDuringWait, before, after, expectedDestination, target,
-                dialogueWasOpen, Rs2Dialogue.isInDialogue());
-    }
-
-    static boolean hasProgressWithoutPositionSnapshot(boolean dialogueWasOpen, boolean dialogueOpen) {
-        return !dialogueWasOpen && dialogueOpen;
-    }
-
-    static boolean waitForProgressWithoutPositionSnapshot(boolean dialogueWasOpen,
-                                                          BooleanSupplier dialogueOpen) {
-        return waitForProgressWithoutPositionSnapshot(
-                dialogueWasOpen, dialogueOpen, condition -> sleepUntil(condition, 1800));
-    }
-
-    static boolean waitForProgressWithoutPositionSnapshot(boolean dialogueWasOpen,
-                                                          BooleanSupplier dialogueOpen,
-                                                          Function<BooleanSupplier, Boolean> waitFor) {
-        return dialogueOpen != null && waitFor != null && Boolean.TRUE.equals(waitFor.apply(
-                () -> hasProgressWithoutPositionSnapshot(dialogueWasOpen, dialogueOpen.getAsBoolean())));
-    }
-
-    static boolean resolveTransportProgress(boolean progressedDuringWait,
-                                            WorldPoint before, WorldPoint after,
-                                            WorldPoint expectedDestination, WorldPoint target,
-                                            boolean dialogueWasOpen, boolean dialogueOpen) {
-        return progressedDuringWait || hasTransportProgress(
-                before, after, expectedDestination, target, dialogueWasOpen, dialogueOpen);
-    }
-
-    static boolean hasTransportProgress(WorldPoint before, WorldPoint now, WorldPoint expectedDestination,
-                                        WorldPoint target, boolean dialogueWasOpen, boolean dialogueOpen) {
-        return !dialogueWasOpen && dialogueOpen
-                || Rs2WalkerProgress.hasMovementOrProgress(before, now, expectedDestination, target);
-    }
-
-    public static boolean hasCompletedTollGateCrossing(boolean dialogueConfirmed,
-                                                       boolean reachedDestination) {
-        return reachedDestination;
+        return Rs2WalkerProgress.hasMovementOrProgress(before, after, expectedDestination, target);
     }
 }
