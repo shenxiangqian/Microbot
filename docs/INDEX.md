@@ -24,6 +24,7 @@ This is the documentation entry point. Keep it short: it should route readers to
 High-level docs should state stable intent, ownership, and links. Put changing API examples, route lists, widget IDs, screenshots, and generated inventories in the narrowest lower-level document.
 - [Architecture](ARCHITECTURE.md)
 - [Decision Records](decisions/)
+- [Detection Hardening](DETECTION_HARDENING.md)
 - [Development Setup](development.md)
 - [Installation](installation.md)
 - [API Overview](../runelite-client/src/main/java/net/runelite/client/plugins/microbot/api/README.md)

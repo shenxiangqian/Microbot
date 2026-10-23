@@ -7,8 +7,12 @@ import net.runelite.api.*;
 import net.runelite.api.events.*;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
-import net.runelite.api.widgets.Widget;
+import net.runelite.client.RuneLite;
 import net.runelite.client.RuneLiteProperties;
+import net.runelite.client.chat.ChatColorType;
+import net.runelite.client.chat.ChatMessageBuilder;
+import net.runelite.client.chat.ChatMessageManager;
+import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
@@ -18,11 +22,15 @@ import net.runelite.client.events.OverlayMenuClicked;
 import net.runelite.client.events.RuneScapeProfileChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.microbot.alerts.ClientAlertReporter;
+import net.runelite.client.plugins.microbot.alerts.DeviceLinkFlow;
 import net.runelite.client.plugins.microbot.diagnostics.ScriptErrorReporter;
 import net.runelite.client.plugins.microbot.pouch.PouchOverlay;
 import net.runelite.client.plugins.microbot.ui.MicrobotPluginConfigurationDescriptor;
 import net.runelite.client.plugins.microbot.ui.MicrobotPluginListPanel;
+import net.runelite.client.plugins.microbot.ui.MicrobotHelpMenu;
 import net.runelite.client.plugins.microbot.ui.MicrobotTopLevelConfigPanel;
+import net.runelite.client.plugins.microbot.ui.MicrobotTour;
 import net.runelite.client.plugins.microbot.ui.ScriptToolbarController;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.death.Rs2Death;
@@ -43,6 +51,7 @@ import net.runelite.client.plugins.microbot.api.boat.Rs2BoatCache;
 import net.runelite.client.plugins.microbot.util.shop.Rs2Shop;
 import net.runelite.client.plugins.microbot.util.tabs.Rs2Tab;
 import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
+import net.runelite.client.plugins.microbot.util.security.HopBudget;
 import net.runelite.client.plugins.microbot.util.security.LoginManager;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
@@ -50,6 +59,7 @@ import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.ui.overlay.OverlayMenuEntry;
 import net.runelite.client.util.ImageUtil;
+import net.runelite.client.util.ResetResistantAttachment;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,6 +71,7 @@ import javax.swing.*;
 import java.awt.AWTException;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
+import java.io.File;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
@@ -69,6 +80,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ScheduledExecutorService;
 @PluginDescriptor(
 	name = PluginDescriptor.Default + "Microbot",
 	description = "Microbot",
@@ -87,10 +99,15 @@ public class MicrobotPlugin extends Plugin
 	 * @apiNote Treat as stable external API: renames or semantic changes break scripts — note in changelog when modifying.
 	 */
 	public static final long LEAGUES_LOCK_CHAT_MAX_ATTEMPT_AGE_MS = Rs2LeaguesTransport.LEAGUES_LOCK_CHAT_MAX_ATTEMPT_AGE_MS;
+	private static final String HWID_SPOOF_PROPERTY = "microbot.hwid.spoof";
 	private EnumSet<WorldType> lastWorldTypeProfile = null;
+	private final HwidSpoofCheck hwidSpoofCheck = new HwidSpoofCheck();
 
 	@Inject
 	private Provider<MicrobotPluginListPanel> pluginListPanelProvider;
+
+	@Inject
+	private ChatMessageManager chatMessageManager;
 
 	@Inject
 	private Provider<MicrobotTopLevelConfigPanel> topLevelConfigPanelProvider;
@@ -105,7 +122,10 @@ public class MicrobotPlugin extends Plugin
 	private MicrobotConfig microbotConfig;
 
 	@Inject
-	private ScriptToolbarController scriptToolbarController;
+	private ScheduledExecutorService executor;
+
+    @Inject
+    private ScriptToolbarController scriptToolbarController;
 
 	private MicrobotTopLevelConfigPanel topLevelConfigPanel;
 
@@ -129,12 +149,26 @@ public class MicrobotPlugin extends Plugin
 	@Inject
 	private EventBus eventBus;
 	private GameChatAppender gameChatAppender;
+	private ResetResistantAttachment gameChatAttachment;
+	private ResetResistantAttachment scriptErrorAttachment;
 
 	@Inject
 	private MicrobotVersionChecker microbotVersionChecker;
 
 	@Inject
 	private ScriptErrorReporter scriptErrorReporter;
+
+	@Inject
+	private ClientAlertReporter clientAlertReporter;
+
+	@Inject
+	private DeviceLinkFlow deviceLinkFlow;
+
+	@Inject
+	private MicrobotHelpMenu helpMenu;
+
+	@Inject
+	private MicrobotTour tour;
 	
 	// Widget change tracking for overlay cache invalidation
 	private volatile boolean widgetLayoutChanged = false;
@@ -156,6 +190,8 @@ public class MicrobotPlugin extends Plugin
 		gameChatAppender = new GameChatAppender();
 		gameChatAppender.setName("GAME_CHAT");
 
+		System.setProperty(HWID_SPOOF_PROPERTY, Boolean.toString(microbotConfig.spoofDeviceId()));
+
 		// Set pattern based on new configuration
 		String pattern = microbotConfig.getGameChatLogPattern().getPattern();
 		gameChatAppender.setPattern(pattern);
@@ -175,15 +211,18 @@ public class MicrobotPlugin extends Plugin
 
 		// Initialize the cached configuration in GameChatAppender
 		GameChatAppender.updateConfiguration(
-				microbotConfig.enableGameChatLogging(),
-				microbotConfig.getGameChatLogLevel().getLevel(),
-				microbotConfig.onlyMicrobotLogging()
+			microbotConfig.enableGameChatLogging(),
+			microbotConfig.getGameChatLogLevel().getLevel(),
+			microbotConfig.onlyMicrobotLogging()
 		);
 
 		Microbot.pauseAllScripts.set(false);
 		InputArbiter.setDisabled(microbotConfig.disableInputYielding());
 		InputArbiter.setMotionThresholdPx(microbotConfig.inputMotionThresholdPx());
 		InputArbiter.setIdleResumeMs(microbotConfig.inputIdleResumeMs());
+		applyHopBudgetConfig();
+		executor.execute(() -> HopBudget.getInstance().persistTo(
+				new File(RuneLite.RUNELITE_DIR, HopBudget.FILE_NAME).toPath(), HopBudget.networkKey()));
 		CanvasInputListener.attach();
 		Microbot.enableAutoRunOn = microbotConfig.enableAutoRunOn();
 		Microbot.useStaminaPotsIfNeeded = microbotConfig.useStaminaPotsIfNeeded();
@@ -191,9 +230,9 @@ public class MicrobotPlugin extends Plugin
 
 		MicrobotPluginListPanel pluginListPanel = pluginListPanelProvider.get();
 		pluginListPanel.addFakePlugin(new MicrobotPluginConfigurationDescriptor(
-				"Microbot", "Microbot client settings",
-				new String[]{"client"},
-				microbotConfig, configManager.getConfigDescriptor(microbotConfig)
+			"Microbot", "Microbot client settings",
+			new String[]{"client"},
+			microbotConfig, configManager.getConfigDescriptor(microbotConfig)
 		));
 		pluginListPanel.rebuildPluginList();
 
@@ -202,11 +241,11 @@ public class MicrobotPlugin extends Plugin
 		final BufferedImage icon = ImageUtil.loadImageResource(getClass(), "microbot_config_icon_lg.png");
 
 		navButton = NavigationButton.builder()
-				.tooltip("Community Plugins")
-				.icon(icon)
-				.priority(0)
-				.panel(topLevelConfigPanel)
-				.build();
+			.tooltip("Community Plugins")
+			.icon(icon)
+			.priority(0)
+			.panel(topLevelConfigPanel)
+			.build();
 
 		clientToolbar.addNavigation(navButton);
 		scriptToolbarController.startUp(navButton);
@@ -231,9 +270,15 @@ public class MicrobotPlugin extends Plugin
 		overlayManager.remove(gembagOverlay);
 		overlayManager.remove(pouchOverlay);
 		clientToolbar.removeNavigation(navButton);
-		if (gameChatAppender.isStarted()) gameChatAppender.stop();
-		((LoggerContext) LoggerFactory.getILoggerFactory()).getLogger(Logger.ROOT_LOGGER_NAME).detachAppender(scriptErrorReporter);
-		scriptErrorReporter.stop();
+		eventBus.unregister(tour);
+		tour.uninstall();
+		helpMenu.uninstall();
+		gameChatAttachment.remove();
+		scriptErrorAttachment.remove();
+		eventBus.unregister(clientAlertReporter);
+		clientAlertReporter.stop();
+		eventBus.unregister(deviceLinkFlow);
+		deviceLinkFlow.stop();
 		microbotVersionChecker.shutdown();
 	}
 
@@ -329,7 +374,10 @@ public class MicrobotPlugin extends Plugin
 	@Subscribe
 	public void onGameStateChanged(GameStateChanged gameStateChanged)
 	{
-		
+	   if (isLoginServerRequest(LoginManager.getLastKnownGameState(), gameStateChanged.getGameState()))
+	   {
+		   executor.execute(() -> HopBudget.getInstance().recordHop());
+	   }
 	   if (gameStateChanged.getGameState() == GameState.LOGGED_IN)
 	   {
 		   // Region-based login detection logic
@@ -351,6 +399,11 @@ public class MicrobotPlugin extends Plugin
 					Microbot.setLastKnownRegions(currentRegions.clone());
 				}
 		   }
+		   hwidSpoofCheck.loggedIn(microbotConfig.spoofDeviceId()).ifPresent(this::reportHwidSpoofProblem);
+	   }
+	   if (gameStateChanged.getGameState() == GameState.LOGIN_SCREEN || gameStateChanged.getGameState() == GameState.HOPPING)
+	   {
+		   hwidSpoofCheck.loginStarted();
 	   }
 	   if (gameStateChanged.getGameState() == GameState.HOPPING || gameStateChanged.getGameState() == GameState.LOGIN_SCREEN || gameStateChanged.getGameState() == GameState.CONNECTION_LOST)
 	   {
@@ -363,6 +416,38 @@ public class MicrobotPlugin extends Plugin
 	   }
 	   // update last known game state to track login/logout transitions
 	   LoginManager.setLastKnownGameState(gameStateChanged.getGameState());
+	}
+
+	private void reportHwidSpoofProblem(String problem)
+	{
+		log.warn(problem);
+		chatMessageManager.queue(QueuedMessage.builder()
+			.type(ChatMessageType.CONSOLE)
+			.runeLiteFormattedMessage(new ChatMessageBuilder()
+				.append(ChatColorType.HIGHLIGHT)
+				.append(problem)
+				.build())
+			.build());
+	}
+
+	static boolean isLoginServerRequest(GameState previous, GameState next)
+	{
+		if (next == GameState.HOPPING)
+		{
+			return previous != GameState.HOPPING;
+		}
+		return next == GameState.LOGGING_IN
+				&& previous != GameState.HOPPING
+				&& previous != GameState.LOGGING_IN;
+	}
+
+	private void applyHopBudgetConfig()
+	{
+		HopBudget.getInstance().configure(
+				microbotConfig.enableHopLimit(),
+				microbotConfig.hopLimitCapacity(),
+				microbotConfig.hopLimitRefillPerHour(),
+				microbotConfig.hopLimitReserve());
 	}
 
 	private static EnumSet<WorldType> normalizeWorldTypesForProfileComparison(EnumSet<WorldType> rawTypes)
@@ -469,7 +554,7 @@ public class MicrobotPlugin extends Plugin
 			String msg = event.getMessage();
 			if (msg != null && containsIgnoreCase(msg, "you can't log into a non-members"))
 			{
-				Microbot.cantHopWorld = true;
+				Microbot.markNonMembersHopRefused(Rs2Player.getWorldLocation());
 			}
 
 			// Leagues: "haven't unlocked access to X area" -> blacklist last transport dest.
@@ -515,6 +600,9 @@ public class MicrobotPlugin extends Plugin
 				case MicrobotConfig.keyUseStaminaPotsIfNeeded:
 					Microbot.useStaminaPotsIfNeeded = microbotConfig.useStaminaPotsIfNeeded();
 					break;
+				case MicrobotConfig.keySpoofDeviceId:
+					System.setProperty(HWID_SPOOF_PROPERTY, Boolean.toString(microbotConfig.spoofDeviceId()));
+					break;
 				case MicrobotConfig.keyDisableInputYielding:
 					InputArbiter.setDisabled(microbotConfig.disableInputYielding());
 					break;
@@ -523,6 +611,12 @@ public class MicrobotPlugin extends Plugin
 					break;
 				case MicrobotConfig.keyInputIdleResumeMs:
 					InputArbiter.setIdleResumeMs(microbotConfig.inputIdleResumeMs());
+					break;
+				case MicrobotConfig.keyEnableHopLimit:
+				case MicrobotConfig.keyHopLimitCapacity:
+				case MicrobotConfig.keyHopLimitRefillPerHour:
+				case MicrobotConfig.keyHopLimitReserve:
+					applyHopBudgetConfig();
 					break;
 				case MicrobotConfig.keyEnableGameChatLogging:
 				case MicrobotConfig.keyGameChatLogPattern:

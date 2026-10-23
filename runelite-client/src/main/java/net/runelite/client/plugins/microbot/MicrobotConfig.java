@@ -61,6 +61,19 @@ public interface MicrobotConfig extends Config
 		return true;
 	}
 
+	String keySpoofDeviceId = "spoofDeviceId";
+	@ConfigItem(
+		keyName = keySpoofDeviceId,
+		name = "Spoof device ID",
+		description = "Replace the hardware device ID and random.dat seed sent to the game server at login with random values cached per account",
+		position = 3,
+		section = generalSection
+	)
+	default boolean spoofDeviceId()
+	{
+		return true;
+	}
+
 	@ConfigSection(
 		name = "Movement",
 		description = "Movement and stamina settings. Plugins may override these, but any changes will be reflected here.",
