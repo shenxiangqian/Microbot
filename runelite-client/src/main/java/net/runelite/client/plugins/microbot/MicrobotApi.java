@@ -12,6 +12,7 @@ import net.runelite.client.plugins.microbot.alerts.DeviceLinkStart;
 import net.runelite.http.api.RuneLiteAPI;
 import okhttp3.Call;
 import okhttp3.Callback;
+import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
@@ -34,6 +35,8 @@ import java.util.concurrent.TimeUnit;
 public class MicrobotApi {
 
     static final long CANCEL_DEVICE_LINK_TIMEOUT_SECONDS = 2;
+    static final long SYNC_READ_TIMEOUT_SECONDS = 40;
+    static final MediaType JPEG = MediaType.parse("image/jpeg");
 
     private final OkHttpClient client;
     private final Gson gson;
@@ -209,6 +212,86 @@ public class MicrobotApi {
                 }
             }
         });
+    }
+
+    public Call syncDashboard(String token, JsonObject payload, int waitSeconds, Callback callback)
+    {
+        Request request = new Request.Builder()
+                .url(microbotApiUrl + "/alerts/sync?wait=" + waitSeconds)
+                .header(ClientLinkToken.HEADER, token)
+                .post(RequestBody.create(RuneLiteAPI.JSON, gson.toJson(payload)))
+                .build();
+        Call call = client.newBuilder().readTimeout(SYNC_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS).build().newCall(request);
+        call.enqueue(callback);
+        return call;
+    }
+
+    public void uploadScreenshot(String token, String requestId, byte[] jpeg, Runnable onFailed)
+    {
+        Request request = new Request.Builder()
+                .url(microbotApiUrl + "/alerts/screenshots/" + requestId)
+                .header(ClientLinkToken.HEADER, token)
+                .post(RequestBody.create(JPEG, jpeg))
+                .build();
+        client.newCall(request).enqueue(new Callback()
+        {
+            @Override
+            public void onFailure(Call call, IOException e)
+            {
+                log.debug("Dashboard screenshot upload failed", e);
+                onFailed.run();
+            }
+
+            @Override
+            public void onResponse(Call call, Response response)
+            {
+                int code = response.code();
+                response.close();
+                if (code >= 300)
+                {
+                    log.debug("Dashboard screenshot upload rejected: HTTP {}", code);
+                }
+                if (code >= 300 && code != 401 && code != 404 && code != 409)
+                {
+                    onFailed.run();
+                }
+            }
+        });
+    }
+
+    public void failScreenshot(String token, String requestId, String reason)
+    {
+        JsonObject body = new JsonObject();
+        body.addProperty("reason", reason);
+        Request request = new Request.Builder()
+                .url(microbotApiUrl + "/alerts/screenshots/" + requestId + "/failed")
+                .header(ClientLinkToken.HEADER, token)
+                .post(RequestBody.create(RuneLiteAPI.JSON, gson.toJson(body)))
+                .build();
+        client.newCall(request).enqueue(logOnly("Dashboard screenshot failure report"));
+    }
+
+    private static Callback logOnly(String what)
+    {
+        return new Callback()
+        {
+            @Override
+            public void onFailure(Call call, IOException e)
+            {
+                log.debug("{} failed", what, e);
+            }
+
+            @Override
+            public void onResponse(Call call, Response response)
+            {
+                int code = response.code();
+                response.close();
+                if (code >= 300)
+                {
+                    log.debug("{} rejected: HTTP {}", what, code);
+                }
+            }
+        };
     }
 
     public DeviceLinkStart startDeviceLink(String label) throws IOException
