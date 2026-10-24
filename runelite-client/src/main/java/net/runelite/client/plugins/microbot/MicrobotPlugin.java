@@ -24,6 +24,7 @@ import net.runelite.client.events.RuneScapeProfileChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.microbot.alerts.ClientAlertReporter;
+import net.runelite.client.plugins.microbot.alerts.DashboardSync;
 import net.runelite.client.plugins.microbot.alerts.DeviceLinkFlow;
 import net.runelite.client.plugins.microbot.diagnostics.ScriptErrorReporter;
 import net.runelite.client.plugins.microbot.pouch.PouchOverlay;
@@ -163,6 +164,9 @@ public class MicrobotPlugin extends Plugin
 	private ClientAlertReporter clientAlertReporter;
 
 	@Inject
+	private DashboardSync dashboardSync;
+
+	@Inject
 	private DeviceLinkFlow deviceLinkFlow;
 
 	@Inject
@@ -182,7 +186,6 @@ public class MicrobotPlugin extends Plugin
 	@Override
 	protected void startUp() throws AWTException
 	{
-		Microbot.clearLastGameTickTime();
 		log.info("Microbot: {} - {}", RuneLiteProperties.getMicrobotVersion(), RuneLiteProperties.getMicrobotCommit());
 		log.info("JVM: {} {}", System.getProperty("java.vendor"), System.getProperty("java.runtime.version"));
 
@@ -278,6 +281,7 @@ public class MicrobotPlugin extends Plugin
 		scriptErrorAttachment.remove();
 		eventBus.unregister(clientAlertReporter);
 		clientAlertReporter.stop();
+		dashboardSync.stop();
 		eventBus.unregister(deviceLinkFlow);
 		deviceLinkFlow.stop();
 		microbotVersionChecker.shutdown();
@@ -740,15 +744,8 @@ public class MicrobotPlugin extends Plugin
 	@Subscribe
 	public void onGameTick(GameTick event)
 	{
-		Client client = Microbot.getClient();
-		if (isInGame(client))
-		{
-			Microbot.recordGameTick();
-		}
-		else
-		{
-			Microbot.clearLastGameTickTime();
-		}
+		// Cheap identity check: a stale registration leaves the arbiter deaf with no other symptom.
+		CanvasInputListener.attach();
 
 		// Start Leagues teleport calibration ASAP after login (non-blocking; prompts for consent once).
 		Rs2LeaguesTransport.tickLeaguesCalibration();
@@ -758,17 +755,6 @@ public class MicrobotPlugin extends Plugin
 		{
 			scriptErrorReporter.rememberPlayerName(localPlayer.getName());
 		}
-	}
-
-	static boolean isInGame(Client client)
-	{
-		if (client == null || client.getGameState() != GameState.LOGGED_IN || client.getLocalPlayer() == null)
-		{
-			return false;
-		}
-
-		Widget playWidget = client.getWidget(InterfaceID.WelcomeScreen.PLAY);
-		return playWidget == null || playWidget.isHidden();
 	}
 
 	@Subscribe(priority = 100)
