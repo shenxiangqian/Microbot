@@ -38,7 +38,8 @@ public final class HwidAgent
 			inst.addTransformer(new RandomDatTransformer());
 			inst.addTransformer(new RandomDatWriteTransformer());
 			System.setProperty(AGENT_PROPERTY, "loaded");
-			launcherCharacterId();
+			log.warning("HwidAgent传入参数："+args);
+			launcherCharacterId(parseAgentArgCharacterId(args));   // 改这一行,加个解析
 		}
 		catch (Throwable t)
 		{
@@ -65,8 +66,9 @@ public final class HwidAgent
 			{
 				return VanillaDeviceId.getDeviceId(osType);
 			}
-
-			return DeviceIdStore.getOrCreate(currentIdentifier());
+			var deviceId = DeviceIdStore.getOrCreate(currentIdentifier());
+			log.warning("设备ID："+deviceId);
+			return deviceId;
 		}
 		catch (Throwable t)
 		{
@@ -126,37 +128,83 @@ public final class HwidAgent
 		}
 	}
 
-	static String currentIdentifier()
-	{
+	static String currentIdentifier() {
 		String username = vanillaUsername();
-		if (username != null && !username.isBlank())
-		{
+		if (username != null && !username.isBlank()) {
 			return "user/" + username.trim();
 		}
 
 		String jxCharacterId = System.getenv("JX_CHARACTER_ID");
-		if (jxCharacterId == null || jxCharacterId.isBlank())
-		{
-			jxCharacterId = launcherCharacterId();
+		if (jxCharacterId == null || jxCharacterId.isBlank()) {
+			jxCharacterId = launcherCharacterId(null);
 		}
-		if (jxCharacterId != null && !jxCharacterId.isBlank())
-		{
+		if (jxCharacterId != null && !jxCharacterId.isBlank()) {
+			log.warning("调用了currentIdentifier()，值是：" + jxCharacterId);
 			return "jx/" + jxCharacterId.trim();
 		}
 
 		return "default";
 	}
 
-	private static synchronized String launcherCharacterId()
-	{
-		if (!credentialsRead)
-		{
+	/**
+	 * 获取characterId,在原方法的基础上添加了参数传入，如果传入了参数就直接返回传入的参数
+	 * @param characterId 角色ID
+	 * @return 角色ID
+	 */
+	private static synchronized String launcherCharacterId(String characterId) {
+		if (!credentialsRead) {
 			credentialsRead = true;
-			credentialsCharacterId = readCharacterId(credentialsFile != null
-				? credentialsFile
-				: new File(new File(System.getProperty("user.home"), ".runelite"), System.getProperty("runelite.credentials.path", "credentials.properties")));
+			if (characterId != null && !characterId.isBlank()) {
+				log.warning("传入了characterId:"+characterId);
+				credentialsCharacterId = characterId.trim();
+			} else {
+				credentialsCharacterId = readCharacterId(credentialsFile != null
+						? credentialsFile
+						: new File(new File(System.getProperty("user.home"), ".runelite"), System.getProperty("runelite.credentials.path", "credentials.properties")));
+			}
 		}
 		return credentialsCharacterId;
+	}
+
+	/**
+	 * 从启动参数里提取characterId
+	 * @param args 启动参数
+	 * @return characterId
+	 */
+	private static String parseAgentArgCharacterId(String args)
+	{
+		if (args == null || args.isBlank())
+		{
+			return null;
+		}
+
+		String trimmed = args.trim();
+
+		// 没有 key=value 格式，就把整段当成 characterId 本身
+		// 对应 -javaagent:hwid-agent-xxx.jar=3333322222111 这种单值写法
+		if (!trimmed.contains("="))
+		{
+			return trimmed;
+		}
+
+		// key=value[,key=value...] 格式
+		// 对应 -javaagent:hwid-agent-xxx.jar=characterId=3333322222111 这种写法
+		for (String pair : trimmed.split(","))
+		{
+			int idx = pair.indexOf('=');
+			if (idx < 0)
+			{
+				continue;
+			}
+			String key = pair.substring(0, idx).trim();
+			String value = pair.substring(idx + 1).trim();
+			if (key.equalsIgnoreCase("characterId") && !value.isBlank())
+			{
+				return value;
+			}
+		}
+
+		return null;
 	}
 
 	private static String readCharacterId(File file)
