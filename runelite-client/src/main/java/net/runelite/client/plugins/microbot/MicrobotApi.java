@@ -2,6 +2,7 @@ package net.runelite.client.plugins.microbot;
 
 import com.google.common.base.Strings;
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import lombok.extern.slf4j.Slf4j;
@@ -9,6 +10,8 @@ import net.runelite.client.RuneLiteProperties;
 import net.runelite.client.plugins.microbot.alerts.ClientLinkToken;
 import net.runelite.client.plugins.microbot.alerts.DeviceLinkPoll;
 import net.runelite.client.plugins.microbot.alerts.DeviceLinkStart;
+import net.runelite.client.plugins.microbot.diagnostics.BugReportReceipt;
+import net.runelite.client.plugins.microbot.diagnostics.BugReportStatus;
 import net.runelite.http.api.RuneLiteAPI;
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -24,6 +27,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -147,6 +152,157 @@ public class MicrobotApi {
                 }
             }
         });
+    }
+
+    public CompletableFuture<BugReportReceipt> submitBugReport(JsonObject payload)
+    {
+        Request.Builder builder = new Request.Builder()
+                .url(microbotApiUrl + "/plugintelemetry/bug-reports")
+                .header("X-Plugin-Telemetry-Token", pluginTelemetryToken)
+                .post(RequestBody.create(RuneLiteAPI.JSON, gson.toJson(payload)));
+        clientLinkToken.get().ifPresent(token -> builder.header(ClientLinkToken.HEADER, token));
+
+        CompletableFuture<BugReportReceipt> result = new CompletableFuture<>();
+        client.newCall(builder.build()).enqueue(new Callback()
+        {
+            @Override
+            public void onFailure(Call call, IOException e)
+            {
+                result.completeExceptionally(new BugReportRejectedException(0, null));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response)
+            {
+                try (response)
+                {
+                    JsonObject body = response.body() == null ? null : gson.fromJson(response.body().charStream(), JsonObject.class);
+                    if (!response.isSuccessful() || body == null || !body.has("code"))
+                    {
+                        String reason = body != null && body.has("reason") ? body.get("reason").getAsString() : null;
+                        result.completeExceptionally(new BugReportRejectedException(response.code(), reason));
+                        return;
+                    }
+                    String token = body.has("followUpToken") && !body.get("followUpToken").isJsonNull() ? body.get("followUpToken").getAsString() : null;
+                    result.complete(new BugReportReceipt(body.get("code").getAsString(), token));
+                }
+                catch (RuntimeException e)
+                {
+                    result.completeExceptionally(new BugReportRejectedException(response.code(), null));
+                }
+            }
+        });
+        return result;
+    }
+
+    public CompletableFuture<List<BugReportStatus>> getBugReportStatuses(Map<String, String> tokensByCode)
+    {
+        JsonArray reports = new JsonArray();
+        tokensByCode.forEach((code, token) ->
+        {
+            JsonObject report = new JsonObject();
+            report.addProperty("code", code);
+            report.addProperty("token", token);
+            reports.add(report);
+        });
+        JsonObject payload = new JsonObject();
+        payload.add("reports", reports);
+        Request request = new Request.Builder()
+                .url(microbotApiUrl + "/plugintelemetry/bug-reports/status")
+                .header("X-Plugin-Telemetry-Token", pluginTelemetryToken)
+                .post(RequestBody.create(RuneLiteAPI.JSON, gson.toJson(payload)))
+                .build();
+
+        CompletableFuture<List<BugReportStatus>> result = new CompletableFuture<>();
+        client.newCall(request).enqueue(new Callback()
+        {
+            @Override
+            public void onFailure(Call call, IOException e)
+            {
+                result.completeExceptionally(e);
+            }
+
+            @Override
+            public void onResponse(Call call, Response response)
+            {
+                try (response)
+                {
+                    if (!response.isSuccessful() || response.body() == null)
+                    {
+                        result.completeExceptionally(new IOException("Bug report status rejected: HTTP " + response.code()));
+                        return;
+                    }
+                    BugReportStatus[] statuses = gson.fromJson(response.body().charStream(), BugReportStatus[].class);
+                    result.complete(statuses == null ? List.of() : List.of(statuses));
+                }
+                catch (RuntimeException e)
+                {
+                    result.completeExceptionally(e);
+                }
+            }
+        });
+        return result;
+    }
+
+    public CompletableFuture<Void> replyToBugReport(String code, String followUpToken, String message)
+    {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("token", followUpToken);
+        payload.addProperty("message", message);
+        Request request = new Request.Builder()
+                .url(microbotApiUrl + "/plugintelemetry/bug-reports/" + code + "/reply")
+                .header("X-Plugin-Telemetry-Token", pluginTelemetryToken)
+                .post(RequestBody.create(RuneLiteAPI.JSON, gson.toJson(payload)))
+                .build();
+
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        client.newCall(request).enqueue(new Callback()
+        {
+            @Override
+            public void onFailure(Call call, IOException e)
+            {
+                result.completeExceptionally(new BugReportRejectedException(0, null));
+            }
+
+            @Override
+            public void onResponse(Call call, Response response)
+            {
+                int status = response.code();
+                response.close();
+                if (status >= 200 && status < 300)
+                {
+                    result.complete(null);
+                }
+                else
+                {
+                    result.completeExceptionally(new BugReportRejectedException(status, null));
+                }
+            }
+        });
+        return result;
+    }
+
+    public static final class BugReportRejectedException extends IOException
+    {
+        private final int status;
+        private final String reason;
+
+        public BugReportRejectedException(int status, String reason)
+        {
+            super(status == 0 ? "Bug report upload failed" : "Bug report rejected: HTTP " + status);
+            this.status = status;
+            this.reason = reason;
+        }
+
+        public int getStatus()
+        {
+            return status;
+        }
+
+        public String getReason()
+        {
+            return reason;
+        }
     }
 
     public void submitErrors(JsonObject payload, Runnable onRejected)

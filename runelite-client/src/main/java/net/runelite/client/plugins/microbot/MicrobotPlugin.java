@@ -24,6 +24,7 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.microbot.alerts.ClientAlertReporter;
 import net.runelite.client.plugins.microbot.alerts.DashboardSync;
 import net.runelite.client.plugins.microbot.alerts.DeviceLinkFlow;
+import net.runelite.client.plugins.microbot.diagnostics.BugReportTracker;
 import net.runelite.client.plugins.microbot.diagnostics.ScriptErrorReporter;
 import net.runelite.client.plugins.microbot.pouch.PouchOverlay;
 import net.runelite.client.plugins.microbot.ui.MicrobotPluginConfigurationDescriptor;
@@ -166,6 +167,9 @@ public class MicrobotPlugin extends Plugin
 	private MicrobotHelpMenu helpMenu;
 
 	@Inject
+	private BugReportTracker bugReportTracker;
+
+	@Inject
 	private MicrobotTour tour;
 	
 	// Widget change tracking for overlay cache invalidation
@@ -243,6 +247,7 @@ public class MicrobotPlugin extends Plugin
 
 		new InputSelector(clientToolbar);
 		helpMenu.install();
+		bugReportTracker.start();
 		eventBus.register(tour);
 		tour.install(navButton);
 
@@ -269,6 +274,7 @@ public class MicrobotPlugin extends Plugin
 		eventBus.unregister(tour);
 		tour.uninstall();
 		helpMenu.uninstall();
+		bugReportTracker.stop();
 		gameChatAttachment.remove();
 		scriptErrorAttachment.remove();
 		eventBus.unregister(clientAlertReporter);
