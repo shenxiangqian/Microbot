@@ -11,7 +11,7 @@ import javax.imageio.ImageWriteParam;
 import javax.imageio.ImageWriter;
 import javax.imageio.stream.ImageOutputStream;
 
-final class DashboardScreenshot
+public final class DashboardScreenshot
 {
 	static final int MAX_WIDTH = 1280;
 	static final float[] QUALITIES = { 0.8f, 0.6f, 0.4f };
@@ -21,7 +21,7 @@ final class DashboardScreenshot
 	{
 	}
 
-	static byte[] encode(BufferedImage frame) throws IOException
+	public static byte[] encode(BufferedImage frame) throws IOException
 	{
 		BufferedImage image = toRgb(frame);
 		byte[] jpeg = null;

@@ -235,12 +235,13 @@ public class RuneLite
 		parser.accepts("low-detail", "Run the game in low detail mode");
         parser.accepts("disable-walker-update", "Disable updates for the static walker");
 		parser.accepts("profile", "Configuration profile to use").withRequiredArg();
+		parser.accepts("character", "Character name to use").withRequiredArg();
 		parser.accepts("noupdate", "Skips the launcher update");
 		parser.accepts("clean-randomdat", "Clean random dat file");
 
         final ArgumentAcceptingOptionSpec<String> proxyInfo = parser.accepts("proxy", "Use a specified proxy. Format: scheme://user:pass@host:port")
                 .withRequiredArg().ofType(String.class);
-        
+
         // New separate proxy parameters
         final ArgumentAcceptingOptionSpec<String> proxyType = parser.accepts("proxy-type", "Proxy type (socks5, socks4, http)")
                 .withRequiredArg().ofType(String.class);
@@ -252,7 +253,7 @@ public class RuneLite
                 .withRequiredArg().ofType(String.class);
         final ArgumentAcceptingOptionSpec<String> proxyPass = parser.accepts("proxy-pass", "Proxy password")
                 .withRequiredArg().ofType(String.class);
-        
+
         final ArgumentAcceptingOptionSpec<File> sessionfile = parser.accepts("sessionfile", "Use a specified session file")
                 .withRequiredArg()
                 .withValuesConvertedBy(new ConfigFileConverter())
