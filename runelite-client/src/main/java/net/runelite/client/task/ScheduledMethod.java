@@ -26,6 +26,7 @@ package net.runelite.client.task;
 
 import java.lang.reflect.Method;
 import java.time.Instant;
+import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
@@ -34,11 +35,12 @@ import lombok.ToString;
 @RequiredArgsConstructor
 @ToString
 @Getter
-class ScheduledMethod
+public class ScheduledMethod
 {
 	private final Schedule schedule;
 	private final Method method;
 	private final Object object;
+	@EqualsAndHashCode.Exclude
 	private final Runnable lambda;
 	@Setter
 	private Instant last = Instant.now();

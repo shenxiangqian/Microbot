@@ -84,6 +84,46 @@ public final class WalkerRouteState {
     public volatile int interimLastDistanceToTarget = Integer.MAX_VALUE;
     /** Wall-clock ms the interim target was last re-chosen. */
     public volatile long interimLastRetargetAtMs = 0L;
+    /** 点击发出时玩家到临时目标的距离，用于判断是否真的走近了目标；未知时为 MAX_VALUE。 */
+    public volatile int interimInitialDistanceToTarget = Integer.MAX_VALUE;
+    /** 临时目标是否由恢复/空闲补点产生；这类目标不走“走近即交接”，沿用超时清除。 */
+    public volatile boolean interimTargetRecovery = false;
+    /**
+     * 临时目标是否已经覆盖路线终点（点击落在路线末端附近）。
+     * 终点附近常有墙体，玩家还在跑向终点时再补点，会从当前位置重选“可达”点并可能落到墙另一侧；
+     * 因此这类目标在玩家仍在移动时不交接、不补点，等玩家停下后再处理。
+     * 仅在 {@link #interimTargetWp} 非空时有意义，每个设置临时目标的位置都要显式赋值。
+     */
+    public volatile boolean interimTargetTerminal = false;
+
+    // ---- 走位回合节奏：观测 processWalk 每一轮（检测→决策→点击）的耗时，用于决定预点击要提前多少。 ----
+
+    /**
+     * 上一轮 processWalk 尾循环开始的墙钟毫秒；0 表示还没有样本。
+     *
+     * <p>预点击半径需要知道"发现该补点到真的点出去"要多久。这个耗时不是常数：
+     * 寻路器重算、场景扫描、传送结算都会把它拉长，而它一旦超过"临时目标剩余行程"，
+     * 玩家就会跑到停住才等到下一格。所以它必须被实测，而不是写死。</p>
+     */
+    public volatile long lastTailIterationAtMs = 0L;
+    /** 回合耗时的指数滑动平均（毫秒）；0 表示还没有样本。 */
+    public volatile double tailCycleEmaMs = 0.0;
+
+    // ---- 补点重试：临时目标因“走近”被清除后，下一次续点击必须发出；被瞬时条件挡住时允许短窗口内重试。 ----
+
+    /** 补点待发出的起始时间（交接条件满足的时刻）；0 表示当前没有待补点。 */
+    public volatile long pendingContinuationSinceMs = 0L;
+    /** 上一次尝试补点的时间，用于限制重试频率（避免每轮都做路径搜索）。 */
+    public volatile long pendingContinuationLastTryAtMs = 0L;
+    /** 本次待补点已经重试的次数，仅用于日志。 */
+    public volatile int pendingContinuationRetries = 0;
+
+    /** 清除待补点状态（补点发出、窗口过期、换新会话时调用）。 */
+    public void clearPendingContinuation() {
+        pendingContinuationSinceMs = 0L;
+        pendingContinuationLastTryAtMs = 0L;
+        pendingContinuationRetries = 0;
+    }
 
     // ---- idle nudge: detects a stationary player mid-route and re-clicks to un-stick. ----
 

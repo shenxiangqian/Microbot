@@ -1,0 +1,495 @@
+﻿diff --git a/runelite-client/src/main/java/net/runelite/client/plugins/microbot/util/walker/Rs2Walker.java b/runelite-client/src/main/java/net/runelite/client/plugins/microbot/util/walker/Rs2Walker.java
+index 2d4e6e7bbd..7c9d95bebc 100644
+--- a/runelite-client/src/main/java/net/runelite/client/plugins/microbot/util/walker/Rs2Walker.java
++++ b/runelite-client/src/main/java/net/runelite/client/plugins/microbot/util/walker/Rs2Walker.java
+@@ -161,12 +161,26 @@ public class Rs2Walker {
+ 	/**
+ 	 * Floor for the jittered per-click route reach. Deliberately above {@link #INTERIM_CLOSE_TILES}
+ 	 * so a short click cannot land inside the interim-close threshold, which would clear the
+-	 * checkpoint immediately and cause click thrash.
++	 * checkpoint immediately and cause click thrash. 跑步预点击半径为 8，下限取 9，
++	 * 保证每次点击落点都在预点击半径之外，避免点完立刻进入交接半径而重复点击。
+ 	 */
+-	static final int ROUTE_CLICK_REACH_MIN_TILES = 7;
++	static final int ROUTE_CLICK_REACH_MIN_TILES = 9;
+ 	static final int INTERIM_PRECLICK_TILES = 6;
+ 	static final int INTERIM_RUN_PRECLICK_TILES = 8;
++	/**
++	 * 补点前玩家相对点击时刻必须至少走近临时目标这么多格。
++	 * 斜向点击的欧氏距离 9 对应切比雪夫距离只有 7，点完立刻就落在预点击半径内；
++	 * 若只比较半径，冷却一过就会在玩家几乎没动（或被墙挡住绕路）时补点，补点还可能落到墙外。
++	 */
++	static final int INTERIM_HANDOFF_MIN_PROGRESS_TILES = 2;
+ 	private static final int INTERIM_MOVING_POLL_MS = 200;
++	/**
++	 * 点击后的最小观察窗口（毫秒）。
++	 *
++	 * <p>点击发出后至少等这么久再判断"有没有新观察"，给服务端一个起走的时间（约 1/3 tick）。
++	 * 超过这个窗口后，等待条件只看真实变化：玩家位移、姿态变化、或走近落点。</p>
++	 */
++	private static final long POST_CLICK_MIN_GRACE_MS = 200L;
+ 	static final long INTERIM_PROGRESS_TIMEOUT_MS = 2500L;
+ 	/**
+ 	 * How much further than its closest approach the player may get from an interim checkpoint before
+@@ -238,8 +252,12 @@ public class Rs2Walker {
+      * reachability BFS ({@link #CLOSEST_INDEX_REACHABLE_STEP_BUDGET} = 20 steps), or a wall between
+      * could not be detected and the Clock Tower click-through-the-wall class comes back. 18 leaves
+      * two steps of path-vs-Euclidean slack inside that budget.
++     * <p>
++     * 实际取 13：日志实测 124 次续点击里 12 次落在小地图可点击范围之外（最远一次 16.3 格就被拒绝），
++     * 这些点击要走回退链，耗时明显更长。13 仍高于 {@link #ROUTE_CLICK_REACH_MIN_TILES}(9)，
++     * 保证点击落点在交接半径之外，同时把点击落点压回稳定可点的范围内。
+      */
+-    static final int ZOOMED_OUT_MINIMAP_REACH_CAP = 18;
++    static final int ZOOMED_OUT_MINIMAP_REACH_CAP = 13;
+     /**
+      * Floor for zoom-shrunk strides. The first cut of zoom awareness floored at the flat
+      * {@link #NORMAL_MINIMAP_REACH_EUCLIDEAN}, which quietly broke the zoomed-IN half of the
+@@ -249,6 +267,14 @@ public class Rs2Walker {
+      */
+     static final int MIN_MINIMAP_REACH_EUCLIDEAN = 5;
+ 
++    /**
++     * 小地图圆边留出的像素余量。
++     *
++     * <p>把「圆的像素半径」换算成「能点到的世界半径」时要留一点余量：小地图圆边上压着
++     * 指南针 / 星球图标，贴边点击容易被当成无效点击。</p>
++     */
++    static final int MINIMAP_CLIP_PIXEL_MARGIN = 3;
++
+ 
+     /**
+      * Stationary window before an active route issues a recovery nudge.
+@@ -263,6 +289,17 @@ public class Rs2Walker {
+      */
+     static final long ACTIVE_ROUTE_IDLE_NUDGE_MS = 750L;
+ 	static final long ACTIVE_ROUTE_IDLE_NUDGE_COOLDOWN_MS = 1_200L;
++	/**
++	 * 补点被瞬时条件挡住后的重试窗口：交接条件满足后的这段时间内，每隔
++	 * {@link #CONTINUATION_RETRY_INTERVAL_MS} 重试一次，窗口外交给空闲补点兜底。
++	 * 窗口与空闲补点（静止 {@link #ACTIVE_ROUTE_IDLE_NUDGE_MS} 后触发）有重叠，这是安全的：
++	 * 两条路径发出点击后都会写入临时目标，重试轮询发现临时目标非空就撤销待补点；
++	 * 反过来重试成功会重置空闲计时，所以不会对同一次停顿发出两次点击。
++	 */
++	static final long CONTINUATION_RETRY_WINDOW_MS = 2_000L;
++	static final long CONTINUATION_RETRY_INTERVAL_MS = 250L;
++	/** 交接到点击落地的耗时超过该值时按 info 级别记录，便于从日志文件里统计慢点击。 */
++	static final long CONTINUATION_SLOW_LOG_MS = 800L;
+     /**
+      * How long after a door-recovery-suppressed tick the idle nudge stays disabled. Rolling — the suppress
+      * branch re-stamps it every tick the door stays unresolved, so the nudge is held off for the whole
+@@ -410,6 +447,7 @@ public class Rs2Walker {
+     static void resetWalkSessionState() {
+         routeState.walkSessionStartedAtMs = System.currentTimeMillis();
+         routeState.firstMovementClickMarked = false;
++        routeState.clearPendingContinuation();
+         startupPhasesLogged.clear();
+         TERMINAL_TRAVEL_ATTEMPTED_EDGES.clear();
+         // The transport handoff belongs to the PREVIOUS walk. Only the three location fields used to
+@@ -1244,6 +1282,8 @@ public class Rs2Walker {
+ 					: walkWithStateInternal(target, distance));
+         } finally {
+             walkerLock.unlock();
++            // 走完把用户的小地图缩放还回去（走位期间钉在 5 像素/格，见 Rs2WalkerMovement#pinMinimapZoom）。
++            Rs2WalkerMovement.restoreMinimapZoom();
+         }
+     }
+ 
+@@ -1307,6 +1347,8 @@ public class Rs2Walker {
+         finally
+         {
+             walkerLock.unlock();
++            // 走完把用户的小地图缩放还回去（走位期间钉在 5 像素/格）。
++            Rs2WalkerMovement.restoreMinimapZoom();
+         }
+     }
+     /**
+@@ -1383,6 +1425,8 @@ public class Rs2Walker {
+         routeState.interimLastBestPathIdx = -1;
+         routeState.interimLastDistanceToTarget = Integer.MAX_VALUE;
+         routeState.interimLastRetargetAtMs = 0L;
++        routeState.interimInitialDistanceToTarget = Integer.MAX_VALUE;
++        routeState.interimTargetRecovery = false;
+         routeState.lastPartialTransRecalcMs = 0L;
+         routeState.idleNudgeLastObservedLocation = playerLocWalk;
+         routeState.idleNudgeStationarySinceMs = System.currentTimeMillis();
+@@ -2081,7 +2125,7 @@ public class Rs2Walker {
+             // recalc, the interim goes stale, and the next continuation click sustains the spiral — the
+             // walker can run minutes in the wrong corridor without ever replanning. Off-path, do nothing
+             // here: the player stops, the "moving" deferral ends, and OFFPATH_RECALC replans properly.
+-            if (clearedInterimTarget
++            if ((clearedInterimTarget || pollPendingContinuationRetry(System.currentTimeMillis()))
+                     && firstInteractionAtRange == FirstRouteInteractionResult.NONE
+                     && isNearPath(walkLoop.playerLoc)
+                     && !walkLoop.interacting
+@@ -2158,6 +2202,13 @@ public class Rs2Walker {
+                         path.size());
+                 walkerDiag("tail exempt exitReason=%s tailBefore=%d early=true interim=%s",
+                         exit.wireName(offPathDeferDetail), processWalkTail, routeState.interimTargetWp);
++                // 终点持有：玩家正跑向终点，等到停下或目标被清除再进入下一轮，避免空转。
++                if (holdTerminalApproachNow(System.currentTimeMillis())) {
++                    sleepUntil(() -> isWalkCancelled(target)
++                                    || routeState.interimTargetWp == null
++                                    || !holdTerminalApproachNow(System.currentTimeMillis()),
++                            INTERIM_MOVING_POLL_MS);
++                }
+                 processWalkTail--;
+                 continue;
+             }
+@@ -2229,7 +2280,9 @@ public class Rs2Walker {
+             // Re-capture: the raw scan, current-tile transport and direct-short-walk above block.
+             walkLoop = WalkLoopSnapshot.capture();
+             WorldPoint currentPlayerLoc = walkLoop.playerLoc;
+-            reachableTilesCache = Rs2Tile.getReachableTilesFromTile(currentPlayerLoc, HANDLER_RANGE * 3);
++            // 半径 39 的可达性 BFS 很贵（每个 pass 都要在客户端线程上跑一遍），而行走过程中
++            // 每 200ms 就有一个 pass。走短期缓存（起点格 + 半径，600ms），玩家站在同一格时不必重算。
++            reachableTilesCache = Rs2WalkerMovement.ReachabilityCache.get(currentPlayerLoc, HANDLER_RANGE * 3);
+             reachableTilesCacheOrigin = currentPlayerLoc;
+             final int currentPlayerPlane = currentPlayerLoc != null ? currentPlayerLoc.getPlane() : -1;
+ 
+@@ -2449,7 +2502,7 @@ public class Rs2Walker {
+                     walkLoop = WalkLoopSnapshot.capture();
+                     WorldPoint playerLoc = walkLoop.playerLoc;
+                     if (playerLoc != null && !playerLoc.equals(reachableTilesCacheOrigin)) {
+-                        reachableTilesCache = Rs2Tile.getReachableTilesFromTile(playerLoc, HANDLER_RANGE * 3);
++                        reachableTilesCache = Rs2WalkerMovement.ReachabilityCache.get(playerLoc, HANDLER_RANGE * 3);
+                         reachableTilesCacheOrigin = playerLoc;
+                         tileReachable = reachableTilesCache.containsKey(currentWorldPoint);
+                         WebWalkLog.spDebug("reachable_recapture | from={} tile={} reachableNow={}", compactWorldPoint(playerLoc), compactWorldPoint(currentWorldPoint), tileReachable);
+@@ -2816,6 +2869,10 @@ public class Rs2Walker {
+                                 routeState.interimLastProgressAtMs = routeState.interimSetAtMs;
+                                 routeState.interimLastBestPathIdx = getClosestTileIndex(path, playerLoc);
+                                 routeState.interimLastDistanceToTarget = distanceToInterimOrMax(clickedRecoveryTarget, playerLoc);
++                                routeState.interimInitialDistanceToTarget = routeState.interimLastDistanceToTarget;
++                                // 恢复点击不参与“走近即交接”，沿用超时清除
++                                routeState.interimTargetRecovery = true;
++                                routeState.interimTargetTerminal = false;
+                                 routeState.interimLastRetargetAtMs = routeState.interimSetAtMs;
+                                 WorldPoint pathLastRecovery = path.get(path.size() - 1);
+                                 int finishThRecovery = tightFinishThreshold(target, pathLastRecovery, distance);
+@@ -2879,6 +2936,8 @@ public class Rs2Walker {
+                                     routeState.interimLastBestPathIdx = -1;
+                                     routeState.interimLastDistanceToTarget = Integer.MAX_VALUE;
+                                     routeState.interimLastRetargetAtMs = 0L;
++                                    routeState.interimInitialDistanceToTarget = Integer.MAX_VALUE;
++                                    routeState.interimTargetRecovery = false;
+                                     doorOrTransportResult = true;
+                                     exit = WalkExit.DOOR_HANDLED_DURING_INTERIM;
+                                     break;
+@@ -2905,6 +2964,20 @@ public class Rs2Walker {
+                                     break;
+                                 }
+ 							} else {
++								// 规划器：刚点击后服务端可能还没开始移动，宽限期内继续等待，避免重复点击。
++								long lastClickAtMs = routeState.interimLastRetargetAtMs > 0L
++										? routeState.interimLastRetargetAtMs : routeState.interimSetAtMs;
++								long msSinceInterimClick = lastClickAtMs > 0L
++										? System.currentTimeMillis() - lastClickAtMs : Long.MAX_VALUE;
++								if (WebWalkMovementPlanner.enabled()
++										&& WebWalkMovementPlanner.decide(playerLoc, interimFinal, false,
++												msSinceInterimClick, interimPreclickTiles())
++										== WebWalkMovementPlanner.Action.WAIT_IN_FLIGHT) {
++									exit = WalkExit.INTERIM_IN_FLIGHT_CLICK;
++									walkerDiag("interim-grace interim=%s interimDist=%d sinceClickMs=%d",
++											interimFinal, interimDist, msSinceInterimClick);
++									break;
++								}
+ 								// Not moving but still far from the interim checkpoint. Treat the interim
+ 								// as stale and pick a fresh checkpoint below (could still resolve to the
+ 								// same tile, but ensures we actually issue a new click).
+@@ -2915,6 +2988,8 @@ public class Rs2Walker {
+ 								routeState.interimLastBestPathIdx = -1;
+                                 routeState.interimLastDistanceToTarget = Integer.MAX_VALUE;
+ 								routeState.interimLastRetargetAtMs = 0L;
++								routeState.interimInitialDistanceToTarget = Integer.MAX_VALUE;
++								routeState.interimTargetRecovery = false;
+ 							}
+ 						}
+                         if (shouldYieldForInterimCheckpoint(path)) {
+@@ -2958,6 +3033,8 @@ public class Rs2Walker {
+ 							routeState.interimLastBestPathIdx = -1;
+                             routeState.interimLastDistanceToTarget = Integer.MAX_VALUE;
+ 							routeState.interimLastRetargetAtMs = 0L;
++							routeState.interimInitialDistanceToTarget = Integer.MAX_VALUE;
++							routeState.interimTargetRecovery = false;
+ 						} else {
+ 							// U-turn safe progress: track progress along the path index, not Euclidean
+ 							// distance-to-target (which can increase on U-shaped routes).
+@@ -3052,58 +3129,59 @@ public class Rs2Walker {
+ 						routeState.interimLastProgressAtMs = nowMs;
+ 						routeState.interimLastBestPathIdx = getClosestTileIndex(path, posBefore);
+                         routeState.interimLastDistanceToTarget = distanceToInterimOrMax(clickedTarget, posBefore);
++                        // 记录点击时的距离，补点必须以“实际走近”为前提
++                        routeState.interimInitialDistanceToTarget = routeState.interimLastDistanceToTarget;
++                        routeState.interimTargetRecovery = false;
++                        routeState.interimTargetTerminal = clickCoversRouteEnd(clickedTarget, path, target);
+ 						routeState.interimLastRetargetAtMs = nowMs;
+ 
+                         final WorldPoint b = clickedTarget;
+                         final WorldPoint before = posBefore;
+-                        // Proximity-primary wake: let each click cover most of its distance
+-                        // before re-clicking, like a human. The progress cap is a safety net
+-                        // for the rare case where proximity never fires (player detoured, got
+-                        // blocked by another entity, etc.) — set just above max reach so it
+-                        // only triggers when something is actually wrong.
++                        // 证据驱动的等待（对齐 Fst 的 awaitChange）。
++                        //
++                        // 旧实现是"先睡满 600ms 再看状态"，而点击目标是 9~10 格外的远处点，
++                        // 玩家在 600ms 内根本不可能走近到 2~4 格，proximity 条件恒不成立，
++                        // 于是每次点击都白白吃满 750ms 上限——这是"跑起来一顿一顿"的第一个来源
++                        // （每次点击多等 150~450ms）。
++                        //
++                        // 现在改成"看到变化就走"：玩家位移、姿态变化、或走近落点，都算一次新观察。
+                         final int proximityWake = Rs2Random.between(2, 4);
+                         final int progressCap = 16;
+                         final long clickedAt = System.currentTimeMillis();
+                         sleepUntil(() -> {
+                             if (isWalkCancelled(target)) return true;
+                             long elapsed = System.currentTimeMillis() - clickedAt;
+-                            if (elapsed < 600) return false;
++                            // 最小保护：给服务端一个起走窗口（约 1/3 tick），
++                            // 否则同一刻就返回，下一轮 pass 会误判"点击没生效"。
++                            if (elapsed < POST_CLICK_MIN_GRACE_MS) return false;
++                            WorldPoint now = Rs2Player.getWorldLocation();
++                            // 位移 = 新观察（人已经走起来了）。
++                            if (now != null && !now.equals(before)) return true;
++                            // 没动：这次点击多半没生效，交给下一轮 pass 的宽限期逻辑处理。
+                             if (!Rs2Player.isMoving()) return true;
+-                            return proximityWaitSatisfied(Rs2Player.getWorldLocation(), b, before,
+-                                    proximityWake, progressCap);
+-                        }, 1200);
++                            return proximityWaitSatisfied(now, b, before, proximityWake, progressCap);
++                        }, WalkerClickPolicy.STATE_WAIT_MS);
+                         WorldPoint afterClickWait = Rs2Player.getWorldLocation();
+-                        boolean routeRetryClicked = false;
+-                        if (afterClickWait != null && afterClickWait.equals(before) && !Rs2Player.isMoving()) {
+-                            WorldPoint routeRetryTarget = clickMiniMapOrFallback(rawPath, b, before,
+-                                    MINIMAP_REACH_EUCLIDEAN - 1, false, rawAnchorIndex);
+-                            if (routeRetryTarget != null) {
+-                                routeRetryClicked = true;
+-                                hintRouteProgressIndex(path,
+-                                        Math.min(targetIdx, i + INTERIM_CLOSE_TILES),
+-                                        target);
+-                                lastAttemptedMinimapClick = routeRetryTarget;
+-                                lastAttemptedMinimapClickOk = true;
+-                                lastAttemptedMinimapClickAtMs = System.currentTimeMillis();
+-                                routeState.interimTargetWp = routeRetryTarget;
+-                                routeState.interimLastProgressAtMs = lastAttemptedMinimapClickAtMs;
+-                                routeState.interimLastDistanceToTarget = distanceToInterimOrMax(routeRetryTarget, before);
+-                                routeState.interimLastRetargetAtMs = lastAttemptedMinimapClickAtMs;
+-                            }
+-                        }
+-                        if (afterClickWait != null && afterClickWait.equals(before) && !Rs2Player.isMoving()
+-                                && routeRetryClicked) {
+-                            sleepUntil(() -> {
+-                                if (isWalkCancelled(target)) return true;
+-                                WorldPoint now = Rs2Player.getWorldLocation();
+-                                return now != null && (b.distanceTo2D(now) <= proximityWake || !now.equals(before) || Rs2Player.isMoving());
+-                            }, 1200);
+-                        }
+                         if (walkCancelledDiag(target, "processWalk:after-click-wait", processWalkTail)) {
+                             return WalkerState.EXIT;
+                         }
+ 
+-                        if (!Rs2Player.isMoving()) {
++                        // 不再在同一轮 pass 里补第二次点击（Fst：一次派发 + awaitChange）。
++                        //
++                        // 旧逻辑在 750ms 处只要"位置没变 && 没动"就立刻再点一次，但服务端已受理、
++                        // 只是客户端还没起走时（1 个 tick 往返）同样满足这个条件——第二次点击会覆盖
++                        // 第一次的落点，这就是点位抖动。补点改由下一轮 pass 决定，
++                        // 且受"起走宽限期"保护（见 WebWalkMovementPlanner.MOVEMENT_START_GRACE_MS）。
++
++                        // 点击后也不做场景扫描，除非能证明这次点击确实没生效：
++                        // 玩家仍在原地，且已经过了起走宽限期。Fst 派发后只 awaitChange，
++                        // 扫描留到下一轮 pass——否则扫描会和刚落下的行走点击抢同一拍。
++                        boolean clickFailed = afterClickWait != null
++                                && afterClickWait.equals(before)
++                                && !Rs2Player.isMoving()
++                                && (System.currentTimeMillis() - clickedAt)
++                                        >= WebWalkMovementPlanner.MOVEMENT_START_GRACE_MS;
++                        if (clickFailed) {
+                             if (handleNearbyRawPathSceneObjects(rawPath, HANDLER_RANGE, target)) {
+                                 doorOrTransportResult = true;
+                                 exit = WalkExit.POST_CLICK_RAW_PATH_SCENE_OBJECT_HANDLED;
+@@ -3135,6 +3213,8 @@ public class Rs2Walker {
+                         routeState.interimLastBestPathIdx = -1;
+                         routeState.interimLastDistanceToTarget = Integer.MAX_VALUE;
+                         routeState.interimLastRetargetAtMs = 0L;
++                        routeState.interimInitialDistanceToTarget = Integer.MAX_VALUE;
++                        routeState.interimTargetRecovery = false;
+                         sleepUntil(() -> isWalkCancelled(target) || !Rs2Player.isMoving(), 1200);
+                         if (walkCancelledDiag(target, "processWalk:after-click-failed-wait", processWalkTail)) {
+                             return WalkerState.EXIT;
+@@ -3186,6 +3266,19 @@ public class Rs2Walker {
+                         partialPath);
+             }
+ 
++            // 终点持有：上一次点击已经覆盖终点且玩家还在跑，此时再点“最终格”会从当前位置重选，
++            // 终点有墙时可能落到墙另一侧。让出本轮，等玩家停下后再决定是否补点。
++            if (!doorOrTransportResult && exit == WalkExit.END_OF_PATH
++                    && holdTerminalApproachNow(System.currentTimeMillis())) {
++                exit = WalkExit.INTERIM_IN_FLIGHT_CLICK;
++                walkerDiag("terminal-hold skip final click interim=%s player=%s",
++                        routeState.interimTargetWp, Rs2Player.getWorldLocation());
++                sleepUntil(() -> isWalkCancelled(target)
++                                || routeState.interimTargetWp == null
++                                || !holdTerminalApproachNow(System.currentTimeMillis()),
++                        INTERIM_MOVING_POLL_MS);
++            }
++
+             // Only do the final-tile canvas click if we iterated the whole path cleanly.
+             // Exiting because the player left the path may still mean movement is active.
+             // so don't clobber that destination.
+@@ -3620,10 +3713,13 @@ public class Rs2Walker {
+     }
+ 
+     /**
+-     * Explicit-zoom variant, kept for external callers that genuinely want a particular zoom. The
+-     * walker itself never uses it: {@code Perspective.localToMinimap} reads the LIVE zoom, so the
+-     * click math is correct at any setting, and pinning the minimap at max zoom on every click both
+-     * looked bot-like and fought the user's own zoom the moment they changed it.
++     * Explicit-zoom variant, kept for external callers that genuinely want a particular zoom.
++     *
++     * <p>The walker itself uses {@link #walkMiniMap(WorldPoint)}, which pins the minimap at
++     * {@link WalkerClickPolicy#MINIMAP_ZOOM} (5 px/tile) for the duration of the walk — see
++     * {@link Rs2WalkerMovement#pinMinimapZoom()}. Pinning is what makes the click land on the
++     * intended tile: the minimap circle is a fixed ~80px, so the pixels-per-tile ratio decides both
++     * the clickable radius and the precision, and the user's own zoom can be anything from 1 to 8.
+      */
+     public static boolean walkMiniMap(WorldPoint worldPoint, double zoomDistance) {
+         if (Microbot.getClient().getMinimapZoom() != zoomDistance)
+@@ -3632,21 +3728,25 @@ public class Rs2Walker {
+     }
+ 
+     /**
+-     * Clicks {@code worldPoint} on the minimap at whatever zoom the user has. Zoom only moves the
+-     * trade-off between reach and pixel precision — zoomed IN shrinks clickable range (~16 tiles at
+-     * zoom 5, ~40 zoomed out), zoomed out shrinks pixels-per-tile — and every caller already has a
+-     * fallback for an unclickable point (nearer route point, canvas click), which is exactly what a
+-     * human at that zoom would do. Tile-exact clicks near walls use the canvas path, which is
+-     * pixel-precise at any zoom.
++     * Clicks {@code worldPoint} on the minimap, at the walker's pinned zoom (5 px/tile).
++     *
++     * <p>The zoom is pinned for the same reason Fst pins it: the minimap circle is a fixed ~80px, so
++     * "pixels per tile" is what decides whether the intended tile is inside the circle and whether
++     * a 1px error lands on the neighbouring tile. At the user's own zoom (1~2 px/tile) a click is
++     * off by a whole tile, the character walks to the wrong place and the walker has to re-click —
++     * that is the visible stutter.</p>
+      */
+     public static boolean walkMiniMap(WorldPoint worldPoint) {
++        // 必须先钉缩放再换算像素：探针和点击必须用同一个比例。
++        Rs2WalkerMovement.pinMinimapZoom();
+         Point point = Rs2MiniMap.worldToMinimap(worldPoint);
+ 
+         if (point == null) return false;
+         if (!disableWalkerUpdate && !Rs2MiniMap.isPointInsideMinimap(point)) return false;
+ 
++        // 小地图点击后不再转动相机：小地图随镜头偏航旋转，行走中转镜头会让下一次点击落点偏移，
++        // 造成重点击和停顿（Fst 版也不转镜头）。主屏幕点击路径仍保留相机对齐。
+         Microbot.getMouse().click(point);
+-        alignCameraTowardWalkTarget(worldPoint);
+         return true;
+     }
+ 
+@@ -3787,6 +3887,25 @@ public class Rs2Walker {
+                                                       String logLabel,
+                                                       int maxEuclidean,
+                                                       boolean markRecoveryCooldown) {
++        // 一次点击内的选点、可达校验、进度更新共用同一份 BFS 结果，点击结束立即失效。
++        boolean ownsMemoScope = openReachableMemoScope();
++        try {
++            return tryIssueRouteMovementClickInner(rawPath, path, target, configuredDistance, logLabel,
++                    maxEuclidean, markRecoveryCooldown);
++        } finally {
++            if (ownsMemoScope) {
++                closeReachableMemoScope();
++            }
++        }
++    }
++
++    private static boolean tryIssueRouteMovementClickInner(List<WorldPoint> rawPath,
++                                                      List<WorldPoint> path,
++                                                      WorldPoint target,
++                                                      int configuredDistance,
++                                                      String logLabel,
++                                                      int maxEuclidean,
++                                                      boolean markRecoveryCooldown) {
+         WorldPoint playerLoc = Rs2Player.getWorldLocation();
+         if (playerLoc == null || path == null || path.isEmpty()) {
+             return false;
+@@ -3877,6 +3996,12 @@ public class Rs2Walker {
+         routeState.interimLastProgressAtMs = routeState.interimSetAtMs;
+         routeState.interimLastBestPathIdx = getClosestTileIndex(path, playerLoc);
+         routeState.interimLastDistanceToTarget = distanceToInterimOrMax(clickedTarget, playerLoc);
++        routeState.interimInitialDistanceToTarget = routeState.interimLastDistanceToTarget;
++        // 恢复/空闲补点不走“走近即交接”，沿用超时清除；普通续点击才参与交接判定。
++        routeState.interimTargetRecovery = markRecoveryCooldown
++                || "active route idle nudge".equals(logLabel);
++        routeState.interimTargetTerminal = !routeState.interimTargetRecovery
++                && clickCoversRouteEnd(clickedTarget, path, target);
+         routeState.interimLastRetargetAtMs = routeState.interimSetAtMs;
+         if (markRecoveryCooldown) {
+             routeState.lastUnreachableRecoveryClickAtMs = routeState.interimSetAtMs;
+@@ -5877,10 +6002,50 @@ public class Rs2Walker {
+     private static final AtomicInteger reachableBfsCalls = new AtomicInteger();
+     private static final AtomicLong reachableBfsMillis = new AtomicLong();
+ 
++    /**
++     * 单次点击调用期间的可达格缓存。
++     * <p>
++     * 一次续点击要经过“选点 -> 校验可达 -> 找回退点 -> 更新路线进度”，这条链上的
++     * {@link #getClosestTileIndex} 和 {@link #findFurthestRawPathPointMatchingGated} 各自重跑一次
++     * 半径 20 的 BFS，每次都是一次回客户端线程的往返。玩家位置不变时结果完全相同，
++     * 所以在点击调用的范围内复用同一份。
++     * <p>
++     * 只在 {@link #openReachableMemoScope()} 与 {@link #closeReachableMemoScope()} 之间生效，
++     * 并且要求玩家位置一致、不超过 {@link #REACHABLE_MEMO_MAX_AGE_MS}；范围外的调用行为不变。
++     * 仅脚本线程使用，所以用 ThreadLocal，不存在跨线程可见性问题。
++     */
++    private static final class ReachableMemoScope {
++        WorldPoint origin;
++        HashMap<WorldPoint, Integer> tiles;
++        long storedAtMs;
++    }
++
++    private static final ThreadLocal<ReachableMemoScope> REACHABLE_MEMO = new ThreadLocal<>();
++    static final long REACHABLE_MEMO_MAX_AGE_MS = 1_500L;
++
++    /** 开启缓存范围；返回 true 表示由本次调用开启（调用方负责关闭），false 表示已在外层范围内。 */
++    static boolean openReachableMemoScope() {
++        if (REACHABLE_MEMO.get() != null) {
++            return false;
++        }
++        REACHABLE_MEMO.set(new ReachableMemoScope());
++        return true;
++    }
++
++    static void closeReachableMemoScope() {
++        REACHABLE_MEMO.remove();
++    }
++
+     static HashMap<WorldPoint, Integer> getClosestIndexReachableTiles(WorldPoint playerLoc) {
+         if (playerLoc == null) {
+             return new HashMap<>();
+         }
++        ReachableMemoScope memo = REACHABLE_MEMO.get();
++        if (memo != null && memo.tiles != null && playerLoc.equals(memo.origin)
++                && System.currentTimeMillis() - memo.storedAtMs <= REACHABLE_MEMO_MAX_AGE_MS) {
++            // 返回副本：调用方会把结果存进快照或传给几何函数，不能让它们改到缓存本体。
++            return new HashMap<>(memo.tiles);
++        }
+         HashMap<WorldPoint, Integer> tiles;
+         long bfsStartedAt = System.currentTimeMillis();
+         reachableBfsCalls.incrementAndGet();
+@@ -5903,6 +6068,11 @@ public class Rs2Walker {
+         if (tiles.isEmpty()) {
+             tiles = nearbyTilesIgnoringCollision(
+                     playerLoc, CLOSEST_INDEX_REACHABLE_STEP_BUDGET);
++        } else if (memo != null) {
++            // 只缓存正常 BFS 的结果；超时回退与空集合回退都是降级数据，不能被复用。
++            memo.origin = playerLoc;
++            memo.tiles = new HashMap<>(tiles);
++            memo.storedAtMs = System.currentTimeMillis();
+         }
+         return tiles;
+     }

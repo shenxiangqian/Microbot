@@ -1803,11 +1803,13 @@ public class Rs2GameObject {
             // (docs/entity-guides), which is how the old opt-in checkCanReach path deadlocked.
             if (CantReachTargetRecovery.retryExhausted(
                     Microbot.cantReachTargetRetries, Rs2Random.between(3, 5))) {
-                Microbot.pauseAllScripts.compareAndSet(false, true);
-                Microbot.showMessage("Your bot tried to interact with an object for "
-                        + Microbot.cantReachTargetRetries + " times but failed. Please take a look at what is happening.");
+                // 放弃本轮恢复：不弹模态窗、不全局暂停脚本，只记日志并进入冷却，
+                // 避免每个 tick 反复走位、反复点击并刷日志。
+                CantReachTargetRecovery.abandon("object " + object.getId() + " at " + object.getWorldLocation(),
+                        Microbot.cantReachTargetRetries);
                 return false;
             }
+
             WorldPoint objectLocation = object.getWorldLocation();
             if (objectLocation == null) return false;
             Microbot.cantReachTargetRetries++;
@@ -1958,6 +1960,8 @@ public class Rs2GameObject {
                     .worldViewId(worldViewId)
                     ,
                 Rs2UiHelper.getObjectClickbox(object));
+            Microbot.cantReachTarget = false;
+            Microbot.cantReachTargetRetries = 0;
 // MenuEntryImpl(getOption=Use, getTarget=Barrier, getIdentifier=43700, getType=GAME_OBJECT_THIRD_OPTION, getParam0=53, getParam1=51, getItemId=-1, isForceLeftClick=true, getWorldViewId=-1, isDeprioritized=false)
             //Rs2Reflection.invokeMenu(param0, param1, menuAction.getId(), object.getId(),-1, "", "", -1, -1);
 

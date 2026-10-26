@@ -33,6 +33,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ScheduledExecutorService;
@@ -53,6 +54,21 @@ public class Scheduler
 	private Scheduler(ScheduledExecutorService executor)
 	{
 		this.executor = executor;
+	}
+
+	public void addScheduledMethod(ScheduledMethod method)
+	{
+		scheduledMethods.add(method);
+	}
+
+	public void removeScheduledMethod(ScheduledMethod method)
+	{
+		scheduledMethods.remove(method);
+	}
+
+	public List<ScheduledMethod> getScheduledMethods()
+	{
+		return Collections.unmodifiableList(scheduledMethods);
 	}
 
 	public <T> void register(T object)

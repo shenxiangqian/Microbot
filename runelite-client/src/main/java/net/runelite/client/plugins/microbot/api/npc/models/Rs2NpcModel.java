@@ -207,9 +207,9 @@ public class Rs2NpcModel extends Rs2ActorModel implements IEntity
                 if (!hasLineOfSight()) {
                     if (CantReachTargetRecovery.retryExhausted(
                             Microbot.cantReachTargetRetries, Rs2Random.between(3, 5))) {
-                        Microbot.pauseAllScripts.compareAndSet(false, true);
-                        Microbot.showMessage("Your bot tried to interact with an NPC for "
-                                + Microbot.cantReachTargetRetries + " times but failed. Please take a look at what is happening.");
+                        // 放弃本轮恢复：不弹模态窗、不全局暂停脚本，只记日志并进入冷却
+                        CantReachTargetRecovery.abandon("NPC '" + npcName + "' at " + getWorldLocation(),
+                                Microbot.cantReachTargetRetries);
                         return false;
                     }
                     final WorldPoint npcWorldPoint = getWorldLocation();
