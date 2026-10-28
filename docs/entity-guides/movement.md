@@ -592,48 +592,44 @@ return Rs2Tile.fullPathTo(sourceTile, targetTile);
 
 **Defensive check:** Mock a scene with an empty source or target slot and assert the path is `null`, as in `Rs2WorldPointNullSceneTileTest` and `Rs2TileNullPathEndpointTest`.
 
-## 30. A minimap click is only as precise as the zoom used to compute it
+## 30. In resizable mode the viewport runs under the side panel, chatbox and minimap
 
-`Perspective.localToMinimap` scales world offsets by the LIVE `client.getMinimapZoom()`, so the
-pixel a minimap click lands on depends on the zoom at the moment of the click. The minimap
-circle is a fixed ~80px: at 1–2 px per tile a 1px error is a whole tile, and the character
-walks to the neighbour instead of the intended tile. The "can I click this?" probe and the
-click itself must therefore use the SAME zoom, and the walker pins the zoom (5 px/tile, the
-Fst value) for the duration of a walk and restores the user's zoom afterwards.
+`client.getViewportXOffset/YOffset/Width/Height` covers the whole canvas in the resizable layouts, so a tile that projects inside the viewport can still be drawn under the inventory/side panel, the chatbox or the minimap. A `WALK` menu entry clicks `param0/param1` exactly, so a scene click point under one of those interfaces lands on the interface. Reject scene click points whose click box intersects a visible top-level overlay container and let the caller use the minimap instead.
 
-A post-click wait must also be evidence-driven. Sleeping a fixed floor (e.g. 600ms) before
-looking at the state costs 150–450ms on every click of a long route, because the click target
-is 9–10 tiles away and the player cannot possibly be "close" that fast. Wait for a real
-observation instead: the player changed tile, the player is moving, or the click demonstrably
-failed. Do not re-click inside the same pass: the server accepts the click one tick before the
-client animates it, so "position unchanged and not moving" is true during normal operation,
-and a second click overwrites the first target. One pass issues at most one click; re-clicks
-are decided on the next pass, after a movement-start grace (4 game ticks).
-
-**Why this matters:** With the user's own zoom and a fixed post-click floor, long routes
-stutter: every step waits out the floor, the intermediate click sometimes lands on the
-neighbouring tile, and the duplicate click drags the character back — "跑起来一顿一顿".
+**Why this matters:** A Discord report on a clean main build showed the walker clicking the inventory while walking. `Rs2WalkerMovement.sceneCanvasPoint` and `Rs2Camera.isTileOnScreen` only tested the viewport rectangle, so `dispatchSceneWalk` clicked a tile point behind the side panel.
 
 **Pattern to follow:**
 
 ```java
-// Same zoom for the probe and the click.
-pinMinimapZoom();
-Point point = Rs2MiniMap.worldToMinimap(worldPoint);
-return point != null && Rs2MiniMap.isPointInsideMinimap(point);
+// Wrong: viewport bounds alone in resizable mode.
+return isCanvasPointInsideViewport(canvasPoint, viewport) ? canvasPoint : null;
 
-// Evidence-driven wait, no fixed floor, no second click in the same pass.
-sleepUntil(() -> {
-    if (elapsed < POST_CLICK_MIN_GRACE_MS) return false;
-    WorldPoint now = Rs2Player.getWorldLocation();
-    return (now != null && !now.equals(before)) || !Rs2Player.isMoving();
-}, WalkerClickPolicy.STATE_WAIT_MS);
+// Right: also reject points covered by a visible side panel, chatbox or minimap container.
+if (!isCanvasPointInsideViewport(canvasPoint, viewport)
+        || isCanvasPointCoveredByInterface(canvasPoint, visibleSceneOverlayBounds())) return null;
 ```
 
-**Where this applies:** `Rs2Walker.walkMiniMap`, `Rs2WalkerMovement.isMiniMapClickable`,
-`Rs2WalkerMovement.minimapClipReachTiles`, the post-click block in `Rs2Walker.processWalk`,
-and `WebWalkMovementPlanner.MOVEMENT_START_GRACE_MS`.
+**Where this applies:** `Rs2WalkerMovement.sceneCanvasPoint`, `Rs2WalkerMovement.isSceneCanvasClickable`, `Rs2WalkerMovement.dispatchSceneWalk`, and any helper that clicks a projected canvas point with a `WALK` entry.
 
-**Defensive check:** With the minimap zoom set to anything other than 5, a 10-tile minimap
-click must still land on the requested tile, and a route of 20 checkpoints must not contain
-two clicks within the same pass.
+**Defensive check:** Assert points inside, touching and outside overlay rectangles against `isCanvasPointCoveredByInterface`, as in `Rs2WalkerUnitTest.sceneClickRejectsPointsCoveredByVisibleInterfaces`.
+
+## 31. The player location can be `null` right after a transport
+
+`Rs2Player.getWorldLocation()` returns `null` while the local player is missing, which happens while the destination area loads after a teleport, ladder or region-crossing door. Location-derived predicates such as `Rs2Player.isInCave()` must answer `false` for a missing location instead of dereferencing it.
+
+**Why this matters:** `Rs2WalkerTransports.finishHandledTransport` restarts pathfinding immediately after a transport, and `Rs2WalkerLifecycleRuntime.restartPathfinding` passes `Rs2Player.isInCave()` to the route request. Telemetry for 2.6.43 recorded a `NullPointerException` from `isInCave` that aborted the walk after the transport had already succeeded.
+
+**Pattern to follow:**
+
+```java
+// Wrong: the location is null while the new area loads.
+return Rs2Player.getWorldLocation().getY() >= 6400;
+
+// Right: no location means no cave.
+WorldPoint location = Rs2Player.getWorldLocation();
+return location != null && location.getY() >= 6400;
+```
+
+**Where this applies:** `Rs2Player.isInCave` and any helper that reads `Rs2Player.getWorldLocation()` during a walk or transport handoff.
+
+**Defensive check:** Mock `Rs2PlayerStateCache.getLocalPlayerPosition()` to return `null` and assert the predicate is `false`, as in `Rs2PlayerIsInCaveTest`.

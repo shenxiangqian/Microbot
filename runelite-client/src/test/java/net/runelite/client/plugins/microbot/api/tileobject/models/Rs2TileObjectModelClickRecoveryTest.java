@@ -27,6 +27,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -132,7 +133,7 @@ public class Rs2TileObjectModelClickRecoveryTest {
     }
 
     @Test
-    public void abandonsOnceRetriesAreExhausted() {
+    public void pausesScriptsOnceRetriesAreExhausted() {
         Microbot.cantReachTarget = true;
         Microbot.cantReachTargetRetries = 5;
         boolean savedPause = Microbot.pauseAllScripts.get();

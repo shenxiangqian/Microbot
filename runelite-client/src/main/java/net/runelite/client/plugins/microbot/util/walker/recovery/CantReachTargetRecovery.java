@@ -49,6 +49,19 @@ public final class CantReachTargetRecovery
 		return retries >= retryLimit;
 	}
 
+	public static int giveUp()
+	{
+		int retries = Microbot.cantReachTargetRetries;
+		reset();
+		return retries;
+	}
+
+	public static void reset()
+	{
+		Microbot.cantReachTarget = false;
+		Microbot.cantReachTargetRetries = 0;
+	}
+
 	public static boolean walkTo(WorldPoint target, int distance)
 	{
 		return walkTo(target, distance, Rs2Walker::walkTo);
