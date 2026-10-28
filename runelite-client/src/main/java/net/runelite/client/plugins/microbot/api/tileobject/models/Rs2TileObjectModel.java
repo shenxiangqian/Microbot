@@ -432,14 +432,15 @@ public class Rs2TileObjectModel implements TileObject, IEntity {
                 Microbot.isCantReachTargetDetectionEnabled, Microbot.cantReachTarget)) {
             return true;
         }
+        WorldPoint objectLocation = getRuneLiteWorldLocation();
         if (CantReachTargetRecovery.retryExhausted(
                 Microbot.cantReachTargetRetries, Rs2Random.between(3, 5))) {
-            Microbot.pauseAllScripts.compareAndSet(false, true);
-            Microbot.showMessage("Your bot tried to interact with an object for "
-                    + Microbot.cantReachTargetRetries + " times but failed. Please take a look at what is happening.");
+            // 放弃本轮恢复：不弹模态窗、不全局暂停脚本，只记日志并进入冷却，
+            // 避免每个 tick 反复走位、反复点击并刷日志。
+            CantReachTargetRecovery.abandon("object " + getId() + " at " + objectLocation,
+                    Microbot.cantReachTargetRetries);
             return false;
         }
-        WorldPoint objectLocation = getRuneLiteWorldLocation();
         if (objectLocation == null) {
             return false;
         }
@@ -449,7 +450,6 @@ public class Rs2TileObjectModel implements TileObject, IEntity {
         if (!CantReachTargetRecovery.walkTo(objectLocation, 2)) {
             return false;
         }
-        Microbot.pauseAllScripts.compareAndSet(true, false);
         Microbot.cantReachTarget = false;
         Microbot.cantReachTargetRetries = 0;
         return true;
@@ -604,6 +604,11 @@ public class Rs2TileObjectModel implements TileObject, IEntity {
                     Rs2UiHelper.getObjectClickbox(tileObject));
 // MenuEntryImpl(getOption=Use, getTarget=Barrier, getIdentifier=43700, getType=GAME_OBJECT_THIRD_OPTION, getParam0=53, getParam1=51, getItemId=-1, isForceLeftClick=true, getWorldViewId=-1, isDeprioritized=false)
             //Rs2Reflection.invokeMenu(param0, param1, menuAction.getId(), object.getId(),-1, "", "", -1, -1);
+
+            // 点击已下发：清掉上一轮的失败标记，让下一次判定从干净状态开始。
+            // 如果这次点击依然走不到，游戏消息会在后续 tick 重新把这个标记置位。
+            Microbot.cantReachTarget = false;
+            Microbot.cantReachTargetRetries = 0;
 
         } catch (Exception ex) {
             log.error("Failed to interact with object: ", ex);

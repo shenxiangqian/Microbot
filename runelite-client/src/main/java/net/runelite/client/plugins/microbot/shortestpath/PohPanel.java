@@ -226,7 +226,7 @@ public class PohPanel extends PluginPanel {
         Map<WorldPoint, Set<Transport>> pohTransports = new HashMap<>();
         WorldPoint exitPortal = instance.tilePanel.getTile();
         if (exitPortal == null) {
-            Microbot.log("Failed to load exit portal config");
+            //Microbot.log("Failed to load exit portal config");
             return allTransports;
         }
 

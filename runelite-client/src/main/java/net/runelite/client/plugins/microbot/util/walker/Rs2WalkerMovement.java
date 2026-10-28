@@ -846,10 +846,12 @@ final class Rs2WalkerMovement {
      * Per-click route reach, jittered below {@code maxEuclidean} so consecutive clicks do not all
      * cover the same tile span.
      * <p>
-     * The floor matters: it must stay clear of {@link #INTERIM_CLOSE_TILES} or the interim
-     * checkpoint clears almost immediately and the walker re-clicks constantly, producing visible
-     * stop-start movement. The ceiling is the caller's reach, which is already tuned to the minimap
-     * clip — going above it just produces outside-clip fallbacks.
+     * The floor matters: it must stay clear of the interim handoff radius
+     * ({@link Rs2Walker#INTERIM_RUN_PRECLICK_TILES} plus lookahead) and of
+     * {@link Rs2Walker#INTERIM_CONSUMED_TILES}; otherwise the checkpoint clears almost immediately
+     * and the walker re-clicks constantly, producing visible stop-start movement. The ceiling is the
+     * caller's reach, which is already tuned to the minimap clip — going above it just produces
+     * outside-clip fallbacks.
      */
     static int routeClickReach(int maxEuclidean) {
         int floor = Math.min(ROUTE_CLICK_REACH_MIN_TILES, maxEuclidean);
@@ -1507,11 +1509,12 @@ final class Rs2WalkerMovement {
     /**
      * 预点击半径的硬上限（格）。
      *
-     * <p>它必须小于小地图点击距离（{@code normalMinimapReach() - 1}，正常为 10），
-     * 否则点出去的落点本身就落在交接半径内，下一轮只剩"最少进展格数"在拦，
-     * 变成点完立刻又点。取 9 是跑步基础半径，也就是正常点击距离 10 之下的最大值。</p>
+     * <p>基础半径 3/4 格 + 前瞻 0~2 格，正常情况下到不了这个上限；它只有在本机回合被拉长
+     * （前瞻给满）时才起作用。必须明显小于小地图点击距离（{@code normalMinimapReach() - 1}，
+     * 正常为 12），否则点出去的落点本身就落在交接半径内，下一轮只剩"最少进展格数"在拦，
+     * 变成点完立刻又点。</p>
      */
-    static final int INTERIM_PRECLICK_MAX_TILES = Rs2Walker.INTERIM_RUN_PRECLICK_TILES;
+    static final int INTERIM_PRECLICK_MAX_TILES = 6;
 
     /** 跑步 / 走路的移动速度（格/秒）。游戏刻 600ms，跑步每刻 2 格、走路每刻 1 格。 */
     static final double RUN_TILES_PER_SECOND = 2.0 / 0.6;
@@ -1533,12 +1536,11 @@ final class Rs2WalkerMovement {
      * 预点击（交接）半径：基础半径 + 由实测回合耗时换算出的提前量。
      *
      * <p>交接半径的物理含义是"还剩多少行程时就必须点下一格"。它必须覆盖发现补点到点出去
-     * 之间的全部延迟：轮询、路径重算、场景扫描、点击派发。写死的 6/8 是按"一回合很快"假设
-     * 定的，一旦某个回合被寻路器重算或场景扫描拉长到超过这段行程，玩家就会跑到停住、
-     * 站定了才等到下一次点击——也就是"偶尔停下来再点小地图"。</p>
-     *
-     * <p>这里把回合耗时换算成行程再加回半径：跑得快就提前得更多，慢回合自动多留余量，
-     * 而回合很快时换算结果为 0，行为与写死的基础半径完全一致。</p>
+     * 之间的全部延迟：轮询、路径重算、场景扫描、点击派发。基础值取 3/4 格，只覆盖
+     * "回合正常快"的情况；一旦某个回合被寻路器重算或场景扫描拉长到超过这段行程，
+     * 玩家就会跑到停住、站定了才等到下一次点击——也就是"偶尔停下来再点小地图"。
+     * 基础值不能再大：它越小，一次点击跑得越远、小地图点得越少（见
+     * {@link #INTERIM_PRECLICK_MAX_TILES}）。</p>
      */
     static int interimPreclickTiles(boolean runEnabled, double measuredCycleMs) {
         int base = runEnabled ? INTERIM_RUN_PRECLICK_TILES : INTERIM_PRECLICK_TILES;
@@ -1602,7 +1604,10 @@ final class Rs2WalkerMovement {
         if (playerLoc == null || playerLoc.getPlane() != interim.getPlane()) {
             return true;
         }
-        if (!holdWhileClose && playerLoc.distanceTo2D(interim) <= INTERIM_CLOSE_TILES) {
+        // 靠近即视为"这次点击已经用完"。刻意用 INTERIM_CONSUMED_TILES(3) 而不是
+        // INTERIM_CLOSE_TILES(5)：这里每早一格清除，就等于让下一次点击早一格发出，
+        // 直接表现为小地图点击变频繁。
+        if (!holdWhileClose && playerLoc.distanceTo2D(interim) <= Rs2Walker.INTERIM_CONSUMED_TILES) {
             return true;
         }
         // An interim the player is walking AWAY from is dead, and nothing else here notices.

@@ -122,6 +122,25 @@ import static net.runelite.client.plugins.microbot.util.Global.*;
 public class Rs2Walker {
     @Setter
     public static ShortestPathConfig config;
+
+    /**
+     * 决定本次执行是否输出寻路日志。
+     * <p>默认关闭：只保留 ERROR。打开后输出 INFO/DEBUG 的完整寻路细节，便于排查。
+     * <p>脚本可以在 {@code run()} 里按需调用，也可通过
+     * "Web Walker / 最短路径 → Debug Options → Walker logging" 配置项切换。
+     *
+     * @param enabled true=输出寻路日志；false=静音
+     */
+    public static void setWalkerLoggingEnabled(boolean enabled) {
+        WalkerLogSwitch.setEnabled(enabled);
+    }
+
+    /**
+     * @return 当前是否输出寻路日志
+     */
+    public static boolean isWalkerLoggingEnabled() {
+        return WalkerLogSwitch.isEnabled();
+    }
     // stuck/movement tracking state migrated to WalkerRouteState (see routeState)
     static volatile WorldPoint currentTarget;
     private static long lastRouteCameraAlignAtNanos;
@@ -147,8 +166,11 @@ public class Rs2Walker {
 
 	/**
 	 * Sticky interim minimap click target to avoid destination flapping when the minimap flag
-	 * disappears around bends. Once we click a reachable point, keep it until we get close
-	 * (<= {@link #INTERIM_CLOSE_TILES}) or progress stalls for {@link #INTERIM_PROGRESS_TIMEOUT_MS}.
+	 * disappears around bends. Once we click a reachable point, keep it until we have used up its
+	 * travel (<= {@link #INTERIM_CONSUMED_TILES}) or progress stalls for
+	 * {@link #INTERIM_PROGRESS_TIMEOUT_MS}.
+	 *
+	 * <p>保持得越久，一次点击就跑得越远、小地图点得越少；但也不能久到交接时玩家已经站住。</p>
 	 */
 	// interim-target state migrated to WalkerRouteState (see routeState)
 
@@ -156,19 +178,42 @@ public class Rs2Walker {
 	/** A single delayed client tick must not turn an otherwise healthy blocking walk into EXIT. */
 	private static final int CLIENT_THREAD_TIMEOUT_RETRIES = 2;
 
+	/**
+	 * 临时目标"已经靠近"的判定半径（切比雪夫），用于门/传送/进度提示等辅助窗口，
+	 * <b>不</b>参与"什么时候补下一次小地图点击"的决定——那个阈值见
+	 * {@link #INTERIM_CONSUMED_TILES} 与 {@link #INTERIM_RUN_PRECLICK_TILES}。
+	 */
 	static final int INTERIM_CLOSE_TILES = 5;
 
 	/**
-	 * Floor for the jittered per-click route reach. Deliberately above {@link #INTERIM_CLOSE_TILES}
-	 * so a short click cannot land inside the interim-close threshold, which would clear the
-	 * checkpoint immediately and cause click thrash. 跑步预点击半径为 9，点击距离为 11~12，
-	 * 下限取 11 才能保证每次点击落点都在预点击半径（含前瞻）之外，
-	 * 避免点完立刻进入交接半径而重复点击。上限 13 仍留 2 格的裕度。
+	 * 临时目标"已经用完"的半径（切比雪夫）：走到这么近，这次点击的行程基本耗尽，
+	 * 无论交接判定是否成立都必须换下一个目标。
+	 *
+	 * <p>这个值直接决定一次点击能跑多远：点击距离约 12 格，减去本半径就是单次点击的
+	 * 有效行程。取 3 表示一次点击大约跑 9 格（跑步约 2.7 秒），和真人点旗子的节奏接近。
+	 * 这个值必须 < 交接半径，否则"用完"会抢在"交接"前面，变成点完就换点。</p>
+	 */
+	static final int INTERIM_CONSUMED_TILES = 3;
+
+	/**
+	 * Floor for the jittered per-click route reach. 必须高于交接半径（含前瞻上限）和
+	 * {@link #INTERIM_CONSUMED_TILES}，否则点出去的落点本身就落在"可以补点"的范围内，
+	 * 下一轮只剩最小进展格数在拦，表现为点完立刻又点。上限 13 仍留 2 格的裕度。
 	 */
 	static final int ROUTE_CLICK_REACH_MIN_TILES = 11;
-	/** 走路（未开跑）时的交接半径。跑步更快、行程更短，需要更早补点，见 {@link #INTERIM_RUN_PRECLICK_TILES}。 */
-	static final int INTERIM_PRECLICK_TILES = 7;
-	static final int INTERIM_RUN_PRECLICK_TILES = 9;
+	/**
+	 * 交接半径（走路，未开跑）：距点击落点还剩这么多格时发下一次点击。
+	 *
+	 * <p>它只是"发下一次点击所需的提前量"，要盖住从发现可以补点到点击真正派发的全部延迟
+	 * （轮询 30ms + 取路点 + 派发），<b>不是</b>点击行程的大部分。为此刻意压小：</p>
+	 *
+	 * <p>历史上这里取 7/9（跑步 9），而点击距离只有 12 格，于是点完只要跑 3 格就满足交接，
+	 * 小地图几乎每秒被点一次——行走看起来像"一路狂点"，既不像真人也不必要。现在基础值降到
+	 * 3/4，再按实测回合耗时向上浮动（见 {@code interimPreclickTiles}），单次点击可覆盖 8~9 格。</p>
+	 */
+	static final int INTERIM_PRECLICK_TILES = 3;
+	/** 交接半径（跑步）。跑得更快，同样的派发延迟会吃掉更多格，所以比走路多留 1 格。 */
+	static final int INTERIM_RUN_PRECLICK_TILES = 4;
 	/**
 	 * 补点前玩家相对点击时刻必须至少走近临时目标这么多格。
 	 * 斜向点击的欧氏距离 9 对应切比雪夫距离只有 7，点完立刻就落在预点击半径内；
@@ -179,8 +224,8 @@ public class Rs2Walker {
 	 * 飞行中等待的单轮上限（毫秒）。
 	 *
 	 * <p>这个值只决定"这一轮最多占住多久再让出"，玩家是否已经可以补点是靠 30ms 固定轮询
-	 * 判断的（见 {@code Rs2WalkerMovement#sleepUntilWalk}）。点击距离已抬到 12 格、
-	 * 交接半径 9 格，中间有 3 格（跑步约 0.9 秒）行程；这个常量只留给"让出后等待"那条路径，
+	 * 判断的（见 {@code Rs2WalkerMovement#sleepUntilWalk}）。点击距离约 12 格、交接半径
+	 * 4~6 格，中间有 6~8 格（跑步约 1.8~2.4 秒）行程；这个常量只留给"让出后等待"那条路径，
 	 * 正常的补点等待用 {@link #INTERIM_HANDOFF_WAIT_MS}。</p>
 	 */
 	private static final int INTERIM_MOVING_POLL_MS = 120;
@@ -282,15 +327,13 @@ public class Rs2Walker {
     /**
      * 普通走位的点击距离（调用处减 1，实际点击 12 格）。
      *
-     * <p>点击距离决定了"两次点击之间玩家能跑多久"：点击 10 格、跑步交接半径 9，
-     * 交接判定又要求至少走近 2 格，于是真正的补点条件要到距离 8 才成立——
-     * 一次点击只能撑 2 格（跑步约 0.6 秒）。走位一轮 pass（取路点、可达 BFS、门扫描、
-     * 点击派发）只要占掉几百毫秒，补点就会落在玩家已经停下之后，表现就是"跑一段、站一下"。</p>
+     * <p>点击距离决定一次点击的<b>上限</b>，交接半径决定<b>实际用掉多少</b>：
+     * 小地图圆只有约 13 格半径，所以点击不可能更远；要让"少点几次"成立，
+     * 只能把交接半径压小（见 {@link #INTERIM_PRECLICK_TILES} / {@link #INTERIM_RUN_PRECLICK_TILES}），
+     * 让一次点击真的跑满 8~9 格，而不是点完 3 格就换目标。</p>
      *
-     * <p>把点击距离抬到 12 格后，交接半径 9 与"走近 2 格"同时满足，一次点击能撑 3 格
-     * （跑步约 0.9 秒），留给下一轮 pass 的余量增加 50%。上限的依据是同文件里
-     * "cardinal tiles reach ~13, 14 太乐观（13.5~13.9 会被拒）"的实测，以及
-     * {@link #ZOOMED_OUT_MINIMAP_REACH_CAP} 已经按 13 跑过；12 格点击仍在圆内。</p>
+     * <p>上限的依据是同文件里"cardinal tiles reach ~13, 14 太乐观（13.5~13.9 会被拒）"的实测，
+     * 以及 {@link #ZOOMED_OUT_MINIMAP_REACH_CAP} 已经按 13 跑过；12 格点击仍在圆内。</p>
      */
     static final int NORMAL_MINIMAP_REACH_EUCLIDEAN = 13;
     /**
@@ -2216,16 +2259,18 @@ public class Rs2Walker {
                 }
             }
             doorAttemptLedger.beginTailPass();
-            FirstRouteInteractionResult firstInteractionAtRange = checkFirstRouteInteractionAtRange(
-                    rawPath, indexOfStartPoint, smoothedToRaw, walkLoop, clearedInterimTarget);
-            if (firstInteractionAtRange == FirstRouteInteractionResult.HANDLED) { processWalkTail--; continue; }
+            // 补点优先于"首个路线交互探测"：交接条件满足的这一刻，唯一该做的事就是把下一次点击发出去。
+            // 探测会抓一次 17 格范围的场景快照（逐个对象查 composition，慢到会自己打
+            // route_scene_capture_slow），这段扫描正好夹在"可以点了"和"真的点了"之间，
+            // 几百毫秒足以把点击推迟到玩家跑完旗子停住之后——表现出来就是"点慢了"。
+            // 安全性由 tryIssueRouteContinuationClick 自己的闸门兜住：路线前方 13 格/10 条边内
+            // 有未处理的路线门、或 6 条边内有即将使用的传送时它会拒绝点击，把这一轮让给下面的探测。
             // Continuation clicks are for flowing ALONG the route after an interim clears. Off-path they
             // are actively harmful: the click keeps the player moving, movement defers the off-path
             // recalc, the interim goes stale, and the next continuation click sustains the spiral — the
             // walker can run minutes in the wrong corridor without ever replanning. Off-path, do nothing
             // here: the player stops, the "moving" deferral ends, and OFFPATH_RECALC replans properly.
             if ((clearedInterimTarget || pollPendingContinuationRetry(System.currentTimeMillis()))
-                    && firstInteractionAtRange == FirstRouteInteractionResult.NONE
                     && isNearPath(walkLoop.playerLoc)
                     && !walkLoop.interacting
                     && !walkLoop.animating
@@ -2236,6 +2281,9 @@ public class Rs2Walker {
                 processWalkTail--;
                 continue;
             }
+            FirstRouteInteractionResult firstInteractionAtRange = checkFirstRouteInteractionAtRange(
+                    rawPath, indexOfStartPoint, smoothedToRaw, walkLoop, clearedInterimTarget);
+            if (firstInteractionAtRange == FirstRouteInteractionResult.HANDLED) { processWalkTail--; continue; }
 
             manageRunEnergy(path.size());
 
@@ -3148,7 +3196,9 @@ public class Rs2Walker {
 					if (sticky != null && sticky.getPlane() == playerLoc.getPlane()) {
 						int stickyDist = sticky.distanceTo2D(playerLoc);
                         recordInterimDistanceProgress(sticky, playerLoc, nowMs);
-						if (stickyDist <= INTERIM_CLOSE_TILES || nowMs - routeState.interimSetAtMs > INTERIM_MAX_AGE_MS) {
+						// 用完半径（不是 INTERIM_CLOSE_TILES）：这个分支会把粘性目标丢掉并重选点击点，
+						// 用 5 格判定等于"还剩 5 格就换目标"，一次点击只能跑 7 格。
+						if (stickyDist <= INTERIM_CONSUMED_TILES || nowMs - routeState.interimSetAtMs > INTERIM_MAX_AGE_MS) {
 							routeState.interimTargetWp = null;
 							routeState.interimTargetIdx = -1;
 							routeState.interimSetAtMs = 0L;

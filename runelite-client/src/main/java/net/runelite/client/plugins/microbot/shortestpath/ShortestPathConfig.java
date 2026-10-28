@@ -723,9 +723,9 @@ public interface ShortestPathConfig extends Config {
 
     @ConfigItem(
             keyName = "verboseWalkerLogging",
-            name = "Verbose console logging",
-            description = "Log walker/shortest-path DEBUG detail to the console without restarting the client "
-                    + "in debug mode. Console only — never the game chat.",
+            name = "Walker logging",
+            description = "输出寻路日志：关闭时只保留 ERROR，打开时输出 INFO/DEBUG 的完整寻路细节。"
+                    + "脚本也可用 Rs2Walker.setWalkerLoggingEnabled(...) 自行决定。",
             position = 3,
             section = sectionDebug
     )

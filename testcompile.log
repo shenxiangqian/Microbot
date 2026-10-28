@@ -1,0 +1,681 @@
+﻿.\gradlew.bat : D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\menus\TestMenuEntry.java:54: 警告: Not g
+enerating setItemId(): A method with that name already exists
+At C:\Users\Administrator\AppData\Local\Temp\ps-script-1e6fd384-16be-4794-8da8-a7b362f21312.ps1:79 char:20
++ ... icrobotNew; .\gradlew.bat :client:compileTestJava --offline -q 2>&1 | ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (D:\MicrobotNew\... already exists:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+	private int itemId = -1;
+	            ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\menus\TestMenuEntry.java:61: 警告: Not generating setWor
+ldViewId(): A method with that name already exists
+	private int worldViewId;
+	            ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\externalplugins\MicrobotPluginManager
+HealthTest.java:131: 错误: 找不到符号
+        assertNull(manager.getLoadBlockReason("HealthFixturePlugin", descriptor(HealthFixturePlugin.class)));
+                          ^
+  符号:   方法 getLoadBlockReason(String,PluginDescriptor)
+  位置: 类型为MicrobotPluginManager的变量 manager
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\externalplugins\MicrobotPluginManager
+HealthTest.java:134: 错误: 找不到符号
+        assertNull(manager.getLoadBlockReason("HealthFixturePlugin", descriptor(HealthFixturePlugin.class)));
+                          ^
+  符号:   方法 getLoadBlockReason(String,PluginDescriptor)
+  位置: 类型为MicrobotPluginManager的变量 manager
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\externalplugins\MicrobotPluginManager
+HealthTest.java:137: 错误: 找不到符号
+        assertNull(manager.getLoadBlockReason("HealthFixturePlugin", descriptor(HealthFixturePlugin.class)));
+                          ^
+  符号:   方法 getLoadBlockReason(String,PluginDescriptor)
+  位置: 类型为MicrobotPluginManager的变量 manager
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\externalplugins\MicrobotPluginManager
+HealthTest.java:143: 错误: 找不到符号
+        assertEquals("disabled upstream", manager.getLoadBlockReason("HealthFixturePlugin", descriptor(HealthFixturePlu
+gin.class)));
+                                                 ^
+  符号:   方法 getLoadBlockReason(String,PluginDescriptor)
+  位置: 类型为MicrobotPluginManager的变量 manager
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\externalplugins\MicrobotPluginManager
+HealthTest.java:164: 错误: 找不到符号
+        assertEquals(2, manager.takeBlockedPluginsToNotify().size());
+                               ^
+  符号:   方法 takeBlockedPluginsToNotify()
+  位置: 类型为MicrobotPluginManager的变量 manager
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\externalplugins\MicrobotPluginManager
+HealthTest.java:165: 错误: 找不到符号
+        assertTrue(manager.takeBlockedPluginsToNotify().isEmpty());
+                          ^
+  符号:   方法 takeBlockedPluginsToNotify()
+  位置: 类型为MicrobotPluginManager的变量 manager
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\externalplugins\MicrobotPluginManager
+HealthTest.java:169: 错误: 找不到符号
+        assertEquals(Collections.singleton("HealthFixturePlugin"), manager.takeBlockedPluginsToNotify().keySet());
+                                                                          ^
+  符号:   方法 takeBlockedPluginsToNotify()
+  位置: 类型为MicrobotPluginManager的变量 manager
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\MicrobotGameTickTrackingTest.java:48:
+ 错误: 找不到符号
+		assertFalse(MicrobotPlugin.isInGame(client));
+		                          ^
+  符号:   方法 isInGame(Client)
+  位置: 类 MicrobotPlugin
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\MicrobotGameTickTrackingTest.java:57:
+ 错误: 找不到符号
+		assertFalse(MicrobotPlugin.isInGame(client));
+		                          ^
+  符号:   方法 isInGame(Client)
+  位置: 类 MicrobotPlugin
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\MicrobotGameTickTrackingTest.java:68:
+ 错误: 找不到符号
+		assertFalse(MicrobotPlugin.isInGame(client));
+		                          ^
+  符号:   方法 isInGame(Client)
+  位置: 类 MicrobotPlugin
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\MicrobotGameTickTrackingTest.java:79:
+ 错误: 找不到符号
+		assertTrue(MicrobotPlugin.isInGame(client));
+		                         ^
+  符号:   方法 isInGame(Client)
+  位置: 类 MicrobotPlugin
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\MicrobotGameTickTrackingTest.java:85:
+ 错误: 找不到符号
+		assertTrue(MicrobotPlugin.isInGame(loggedInClient()));
+		                         ^
+  符号:   方法 isInGame(Client)
+  位置: 类 MicrobotPlugin
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\shortestpath\pathfinder\PathfinderCon
+figTransportRefreshHashTest.java:36: 错误: 找不到符号
+        assertTrue(PathfinderConfig.hasAvailableCurrencyForFare(400, 100, 500, true));
+                                   ^
+  符号:   方法 hasAvailableCurrencyForFare(int,int,int,boolean)
+  位置: 类 PathfinderConfig
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\shortestpath\pathfinder\PathfinderCon
+figTransportRefreshHashTest.java:37: 错误: 找不到符号
+        assertFalse(PathfinderConfig.hasAvailableCurrencyForFare(400, 100, 500, false));
+                                    ^
+  符号:   方法 hasAvailableCurrencyForFare(int,int,int,boolean)
+  位置: 类 PathfinderConfig
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\shortestpath\pathfinder\PathfinderCon
+figTransportRefreshHashTest.java:38: 错误: 找不到符号
+        assertFalse(PathfinderConfig.hasAvailableCurrencyForFare(400, 99, 500, true));
+                                    ^
+  符号:   方法 hasAvailableCurrencyForFare(int,int,int,boolean)
+  位置: 类 PathfinderConfig
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\shortestpath\pathfinder\PathfinderCon
+figTransportRefreshHashTest.java:46: 错误: 找不到符号
+        assertEquals(400, PathfinderConfig.knownCurrencyQuantity("Coins", inventoryOnly));
+                                          ^
+  符号:   方法 knownCurrencyQuantity(String,Map<Integer,Integer>)
+  位置: 类 PathfinderConfig
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\shortestpath\pathfinder\PathfinderCon
+figTransportRefreshHashTest.java:47: 错误: 找不到符号
+        assertEquals(500, PathfinderConfig.knownCurrencyQuantity("Coins", withBank));
+                                          ^
+  符号:   方法 knownCurrencyQuantity(String,Map<Integer,Integer>)
+  位置: 类 PathfinderConfig
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\shortestpath\pathfinder\PathfinderCon
+figTransportRefreshHashTest.java:48: 错误: 找不到符号
+        assertEquals(3, PathfinderConfig.knownCurrencyQuantity("Ecto-token", withBank));
+                                        ^
+  符号:   方法 knownCurrencyQuantity(String,Map<Integer,Integer>)
+  位置: 类 PathfinderConfig
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\shortestpath\pathfinder\PathfinderCon
+figTransportRefreshHashTest.java:49: 错误: 找不到符号
+        assertEquals(0, PathfinderConfig.knownCurrencyQuantity("Ecto-token", inventoryOnly));
+                                        ^
+  符号:   方法 knownCurrencyQuantity(String,Map<Integer,Integer>)
+  位置: 类 PathfinderConfig
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\shortestpath\pathfinder\PathfinderCon
+figTransportRefreshHashTest.java:51: 错误: 找不到符号
+                PathfinderConfig.knownCurrencyQuantity("custom token", withBank));
+                                ^
+  符号:   方法 knownCurrencyQuantity(String,Map<Integer,Integer>)
+  位置: 类 PathfinderConfig
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\shortestpath\pathfinder\PathfinderCon
+figTransportRefreshHashTest.java:56: 错误: 找不到符号
+        assertEquals(-1, PathfinderConfig.chronicleChargeState(null));
+                                         ^
+  符号:   方法 chronicleChargeState(<空值>)
+  位置: 类 PathfinderConfig
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\shortestpath\pathfinder\PathfinderCon
+figTransportRefreshHashTest.java:57: 错误: 找不到符号
+        assertEquals(-1, PathfinderConfig.chronicleChargeState("invalid"));
+                                         ^
+  符号:   方法 chronicleChargeState(String)
+  位置: 类 PathfinderConfig
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\shortestpath\pathfinder\PathfinderCon
+figTransportRefreshHashTest.java:58: 错误: 找不到符号
+        assertEquals(0, PathfinderConfig.chronicleChargeState("0"));
+                                        ^
+  符号:   方法 chronicleChargeState(String)
+  位置: 类 PathfinderConfig
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\shortestpath\pathfinder\PathfinderCon
+figTransportRefreshHashTest.java:59: 错误: 找不到符号
+        assertEquals(1, PathfinderConfig.chronicleChargeState("1"));
+                                        ^
+  符号:   方法 chronicleChargeState(String)
+  位置: 类 PathfinderConfig
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\shortestpath\pathfinder\PathfinderCon
+figTransportRefreshHashTest.java:60: 错误: 找不到符号
+        assertEquals(1, PathfinderConfig.chronicleChargeState("12"));
+                                        ^
+  符号:   方法 chronicleChargeState(String)
+  位置: 类 PathfinderConfig
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\shortestpath\pathfinder\PathfinderCon
+figTransportRefreshHashTest.java:71: 错误: TransportRefreshSnapshot 在 PathfinderConfig 中是 private 访问控制
+        PathfinderConfig.TransportRefreshSnapshot blocked =
+                        ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\shortestpath\pathfinder\PathfinderCon
+figTransportRefreshHashTest.java:72: 错误: TransportRefreshSnapshot 在 PathfinderConfig 中是 private 访问控制
+                PathfinderConfig.TransportRefreshSnapshot.capture(1, 1, new int[0],
+                                ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\shortestpath\pathfinder\PathfinderCon
+figTransportRefreshHashTest.java:75: 错误: TransportRefreshSnapshot 在 PathfinderConfig 中是 private 访问控制
+        PathfinderConfig.TransportRefreshSnapshot open =
+                        ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\shortestpath\pathfinder\PathfinderCon
+figTransportRefreshHashTest.java:76: 错误: TransportRefreshSnapshot 在 PathfinderConfig 中是 private 访问控制
+                PathfinderConfig.TransportRefreshSnapshot.capture(2, 2, new int[0],
+                                ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\shortestpath\pathfinder\PathfinderCon
+figTransportRefreshHashTest.java:355: 错误: 找不到符号
+        Set<Integer> expanded = PathfinderConfig.expandTransportRelevantItemState(
+                                                ^
+  符号:   方法 expandTransportRelevantItemState(Set<Integer>,Set<Integer>)
+  位置: 类 PathfinderConfig
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\shortestpath\pathfinder\PathfinderCon
+figTransportRefreshHashTest.java:361: 错误: 找不到符号
+                expanded, PathfinderConfig.expandTransportRelevantItemState(expanded, baseCatalog));
+                                          ^
+  符号:   方法 expandTransportRelevantItemState(Set<Integer>,Set<Integer>)
+  位置: 类 PathfinderConfig
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\shortestpath\pathfinder\PathfinderCon
+figTransportRefreshHashTest.java:363: 错误: 找不到符号
+                null, PathfinderConfig.expandTransportRelevantItemState(expanded, null));
+                                      ^
+  符号:   方法 expandTransportRelevantItemState(Set<Integer>,<空值>)
+  位置: 类 PathfinderConfig
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\ui\MicrobotPluginListPanelNoticeTest.
+java:17: 错误: 找不到符号
+        String message = MicrobotPluginListPanel.blockedPluginsMessage(blocked,
+                                                ^
+  符号:   方法 blockedPluginsMessage(Map<String,String>,(name)->na[...] name)
+  位置: 类 MicrobotPluginListPanel
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2CannonOwnershipTes
+t.java:36: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+    private MockedStatic<Rs2GameObject> gameObject;
+                         ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2CannonOwnershipTes
+t.java:36: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+    private MockedStatic<Rs2GameObject> gameObject;
+                         ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2CannonOwnershipTes
+t.java:36: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+    private MockedStatic<Rs2GameObject> gameObject;
+                         ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2CannonOwnershipTes
+t.java:36: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+    private MockedStatic<Rs2GameObject> gameObject;
+                         ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2CannonOwnershipTes
+t.java:36: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+    private MockedStatic<Rs2GameObject> gameObject;
+                         ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2CannonOwnershipTes
+t.java:51: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        gameObject = Mockito.mockStatic(Rs2GameObject.class);
+                                        ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2CannonOwnershipTes
+t.java:52: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        gameObject.when(() -> Rs2GameObject.findObject(any(Integer[].class))).thenReturn(cannon);
+                              ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2CannonOwnershipTes
+t.java:76: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        gameObject.verify(() -> Rs2GameObject.interact(any(TileObject.class), anyString()), never());
+                                ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2CannonOwnershipTes
+t.java:84: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        gameObject.verify(() -> Rs2GameObject.interact(any(TileObject.class), anyString()), never());
+                                ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2CannonOwnershipTes
+t.java:91: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        gameObject.verify(() -> Rs2GameObject.interact(any(TileObject.class), anyString()), never());
+                                ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2CannonOwnershipTes
+t.java:98: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        gameObject.verify(() -> Rs2GameObject.interact((TileObject) cannon, "Repair"));
+                                ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectCacheSou
+rceTest.java:89: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        List<GameObject> found = Rs2GameObject.getGameObjects(o -> true, PLAYER, 20 * 128);
+                                 ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectCacheSou
+rceTest.java:101: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        assertEquals(List.of(wall, ground), Rs2GameObject.getTileObjects(o -> true, PLAYER, 20 * 128));
+                                            ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectCacheSou
+rceTest.java:102: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        assertEquals(List.of(wall), Rs2GameObject.getWallObjects(o -> true, PLAYER, 20 * 128));
+                                    ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectCacheSou
+rceTest.java:111: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        assertEquals(List.of(onLand), Rs2GameObject.getGameObjects(o -> true, PLAYER, 20 * 128));
+                                      ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectCacheSou
+rceTest.java:120: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        List<WallObject> walls = Rs2GameObject.getWallObjects(o -> true, lastTile, 10 * 128);
+                                 ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectCacheSou
+rceTest.java:132: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        assertTrue(Rs2GameObject.getGameObjects(o -> true, PLAYER, 20 * 128).isEmpty());
+                   ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectClickObj
+ectNullLocationTest.java:53: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且
+标记为待删除
+        assertFalse(Rs2GameObject.clickObject(object, "Bank"));
+                    ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectClickObj
+ectNullLocationTest.java:63: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且
+标记为待删除
+        assertFalse(Rs2GameObject.clickObject(object, "Bank"));
+                    ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectClickObj
+ectWorldViewTest.java:83: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为
+待删除
+        assertFalse(Rs2GameObject.clickObject(object, "Deposit"));
+                    ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectClickObj
+ectWorldViewTest.java:94: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为
+待删除
+            assertFalse(Rs2GameObject.clickObject(object, "Deposit"));
+                        ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectClickObj
+ectWorldViewTest.java:104: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记
+为待删除
+        assertFalse(Rs2GameObject.clickObject(object, "Deposit"));
+                    ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectFindReac
+hableTest.java:46: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+    private MockedStatic<Rs2GameObject> gameObjects;
+                         ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectFindReac
+hableTest.java:46: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+    private MockedStatic<Rs2GameObject> gameObjects;
+                         ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectFindReac
+hableTest.java:46: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+    private MockedStatic<Rs2GameObject> gameObjects;
+                         ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectFindReac
+hableTest.java:46: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+    private MockedStatic<Rs2GameObject> gameObjects;
+                         ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectFindReac
+hableTest.java:46: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+    private MockedStatic<Rs2GameObject> gameObjects;
+                         ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectFindReac
+hableTest.java:74: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        gameObjects = Mockito.mockStatic(Rs2GameObject.class, Mockito.CALLS_REAL_METHODS);
+                                         ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectFindReac
+hableTest.java:75: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        gameObjects.when(() -> Rs2GameObject.getObjectIdsByName(anyString())).thenReturn(Collections.emptyList());
+                               ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectFindReac
+hableTest.java:76: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        gameObjects.when(() -> Rs2GameObject.getCompositionName(any(TileObject.class)))
+                               ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectFindReac
+hableTest.java:78: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        gameObjects.when(() -> Rs2GameObject.convertToObjectComposition(any(TileObject.class)))
+                               ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectFindReac
+hableTest.java:85: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        gameObjects.when(() -> Rs2GameObject.getGameObjects(any(), any(WorldPoint.class), anyInt()))
+                               ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectFindReac
+hableTest.java:91: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        gameObjects.when(() -> Rs2GameObject.isReachable(any(GameObject.class)))
+                               ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectFindReac
+hableTest.java:126: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        GameObject found = Rs2GameObject.findReachableObject("Ladder", true, 20, PLAYER);
+                           ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectFindReac
+hableTest.java:138: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        GameObject found = Rs2GameObject.findReachableObject("Bank booth", true, 20, PLAYER, true, "Bank");
+                           ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectFindReac
+hableTest.java:151: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        GameObject found = Rs2GameObject.findReachableObject("Rocks", true, 20, PLAYER);
+                           ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectFindReac
+hableTest.java:162: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        assertNull(Rs2GameObject.findReachableObject("Ladder", true, 20, PLAYER));
+                   ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectFindReac
+hableTest.java:171: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        assertNull(Rs2GameObject.findReachableObject("Rocks", true, 20, PLAYER));
+                   ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectFindReac
+hableTest.java:181: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        assertSame(first, Rs2GameObject.findReachableObject("Rocks", true, 20, PLAYER));
+                          ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectFindReac
+hableTest.java:191: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        assertSame(oak, Rs2GameObject.findReachableObject("oak", false, 20, PLAYER));
+                        ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectFindReac
+hableTest.java:201: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        WorldPoint found = Rs2GameObject.findNearestReachable(candidates, p -> p, PLAYER, p -> {
+                           ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectNullAnch
+orTest.java:50: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        assertNull(Rs2GameObject.findBank());
+                   ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectNullAnch
+orTest.java:57: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        assertTrue(Rs2GameObject.getTileObjects(o -> true, anchor, 10).isEmpty());
+                   ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectNullAnch
+orTest.java:58: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        assertTrue(Rs2GameObject.getGameObjects(o -> true, anchor, 10).isEmpty());
+                   ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectNullAnch
+orTest.java:59: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        assertTrue(Rs2GameObject.getGroundObjects(o -> true, anchor, 10).isEmpty());
+                   ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectNullAnch
+orTest.java:60: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        assertTrue(Rs2GameObject.getWallObjects(o -> true, anchor, 10).isEmpty());
+                   ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectNullAnch
+orTest.java:61: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        assertTrue(Rs2GameObject.getDecorativeObjects(o -> true, anchor, 10).isEmpty());
+                   ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectNullAnch
+orTest.java:68: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        assertNull(Rs2GameObject.getTileObject(o -> true, anchor, 10));
+                   ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectNullAnch
+orTest.java:69: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        assertNull(Rs2GameObject.getGameObject(o -> true, anchor, 10));
+                   ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectNullAnch
+orTest.java:70: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        assertNull(Rs2GameObject.getGroundObject(o -> true, anchor, 10));
+                   ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectNullAnch
+orTest.java:71: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        assertNull(Rs2GameObject.getWallObject(o -> true, anchor, 10));
+                   ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectNullAnch
+orTest.java:72: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        assertNull(Rs2GameObject.getDecorativeObject(o -> true, anchor, 10));
+                   ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\gameobject\Rs2GameObjectNullAnch
+orTest.java:73: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        assertNull(Rs2GameObject.getGameObject(1234, 10));
+                   ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\grounditem\GroundItemInteraction
+DispatchTest.java:24: 警告: [removal] net.runelite.client.plugins.microbot.util.grounditem 中的 Rs2GroundItem 已过时, 且标记为待删除
+                Rs2GroundItem.class,
+                ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\grounditem\Rs2GroundItemNullLoca
+lPlayerTest.java:83: 警告: [removal] net.runelite.client.plugins.microbot.util.grounditem 中的 Rs2GroundItem 已过时, 且标记为待删除
+        assertEquals(0, Rs2GroundItem.getAllFromWorldPoint(5, CENTER).length);
+                        ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\grounditem\Rs2GroundItemNullLoca
+lPlayerTest.java:92: 警告: [removal] net.runelite.client.plugins.microbot.util.grounditem 中的 Rs2GroundItem 已过时, 且标记为待删除
+        assertEquals(0, Rs2GroundItem.getAllFromWorldPoint(5, CENTER).length);
+                        ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\grounditem\Rs2GroundItemNullLoca
+lPlayerTest.java:101: 警告: [removal] net.runelite.client.plugins.microbot.util.grounditem 中的 Rs2GroundItem 已过时, 且标记为待删除
+        RS2Item[] items = Rs2GroundItem.getAllFromWorldPoint(5, CENTER);
+                          ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\input\InputEmissionTest.java:176
+: 错误: 找不到符号
+		assertTrue("held " + held + "ms", held >= VirtualMouse.CLICK_HOLD_MIN_MS - 5);
+		                                                      ^
+  符号:   变量 CLICK_HOLD_MIN_MS
+  位置: 类 VirtualMouse
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\input\InputEmissionTest.java:192
+: 错误: 找不到符号
+		assertTrue("settled " + settle + "ms", settle >= VirtualMouse.QUICK_CLICK_SETTLE_MIN_MS - 3);
+		                                                             ^
+  符号:   变量 QUICK_CLICK_SETTLE_MIN_MS
+  位置: 类 VirtualMouse
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\input\InputEmissionTest.java:194
+: 错误: 找不到符号
+		assertTrue("held " + held + "ms", held >= VirtualMouse.QUICK_CLICK_HOLD_MIN_MS - 5);
+		                                                      ^
+  符号:   变量 QUICK_CLICK_HOLD_MIN_MS
+  位置: 类 VirtualMouse
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\keyboard\Rs2KeyboardTest.java:48
+: 错误: 无法将类 Rs2Keyboard中的方法 dispatchKeyEvent应用到给定类型;
+		Rs2Keyboard.dispatchKeyEvent(canvas, KeyEvent.KEY_PRESSED, KeyEvent.VK_A, 'a', 0);
+		           ^
+  需要: int,int,char
+  找到:    Canvas,int,int,char,int
+  原因: 实际参数列表和形式参数列表长度不同
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\npc\Rs2NpcWalkToNearestMonsterTe
+st.java:13: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+        assertFalse(Rs2Npc.walkToNearestMonster(UNKNOWN_MONSTER));
+                    ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\npc\Rs2NpcWalkToNearestMonsterTe
+st.java:18: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+        assertFalse(Rs2Npc.walkToNearestMonster(UNKNOWN_MONSTER, 3));
+                    ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\npc\Rs2NpcWalkToNearestMonsterTe
+st.java:23: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+        assertFalse(Rs2Npc.walkToNearestMonster(UNKNOWN_MONSTER, 3, true));
+                    ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\walker\SelectedTransportScanTest
+.java:49: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+	private MockedStatic<Rs2GameObject> gameObjects;
+	                     ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\walker\SelectedTransportScanTest
+.java:49: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+	private MockedStatic<Rs2GameObject> gameObjects;
+	                     ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\walker\SelectedTransportScanTest
+.java:49: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+	private MockedStatic<Rs2GameObject> gameObjects;
+	                     ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\walker\SelectedTransportScanTest
+.java:49: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+	private MockedStatic<Rs2GameObject> gameObjects;
+	                     ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\walker\SelectedTransportScanTest
+.java:49: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+	private MockedStatic<Rs2GameObject> gameObjects;
+	                     ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\walker\SelectedTransportScanTest
+.java:51: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+	private MockedStatic<Rs2Npc> npcs;
+	                     ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\walker\SelectedTransportScanTest
+.java:51: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+	private MockedStatic<Rs2Npc> npcs;
+	                     ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\walker\SelectedTransportScanTest
+.java:51: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+	private MockedStatic<Rs2Npc> npcs;
+	                     ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\walker\SelectedTransportScanTest
+.java:51: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+	private MockedStatic<Rs2Npc> npcs;
+	                     ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\walker\SelectedTransportScanTest
+.java:51: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+	private MockedStatic<Rs2Npc> npcs;
+	                     ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\walker\SelectedTransportScanTest
+.java:85: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+		gameObjects.verify(() -> Rs2GameObject.getAll(any(), eq(origin), eq(10)), times(1));
+		                         ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\walker\SelectedTransportScanTest
+.java:102: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+		gameObjects.verify(() -> Rs2GameObject.getAll(any(), any(WorldPoint.class), eq(10)), never());
+		                         ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\walker\SelectedTransportScanTest
+.java:115: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+		npcs.when(() -> Rs2Npc.getNpc(anyString())).thenReturn(guide);
+		                ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\walker\SelectedTransportScanTest
+.java:116: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+		npcs.when(() -> Rs2Npc.canWalkTo(any(Rs2NpcModel.class), anyInt())).thenReturn(true);
+		                ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\walker\SelectedTransportScanTest
+.java:117: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+		npcs.when(() -> Rs2Npc.getAvailableAction(any(Rs2NpcModel.class), anyList())).thenReturn("Follow");
+		                ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\walker\SelectedTransportScanTest
+.java:118: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+		npcs.when(() -> Rs2Npc.interact(any(Rs2NpcModel.class), anyString())).thenReturn(false);
+		                ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\walker\SelectedTransportScanTest
+.java:123: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+		npcs.verify(() -> Rs2Npc.interact(guide, "Follow"), times(1));
+		                  ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\walker\SelectedTransportScanTest
+.java:124: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+		gameObjects.verify(() -> Rs2GameObject.getAll(any(), any(WorldPoint.class), eq(10)), never());
+		                         ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\walker\SelectedTransportScanTest
+.java:175: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+		npcs = open(Rs2Npc.class);
+		            ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\walker\SelectedTransportScanTest
+.java:177: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+		gameObjects = open(Rs2GameObject.class);
+		                   ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\microbot\util\walker\SelectedTransportScanTest
+.java:178: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+		gameObjects.when(() -> Rs2GameObject.getAll(any(), any(WorldPoint.class), anyInt())).thenReturn(List.of());
+		                       ^
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\PluginManagerAlwaysOnTest.java:47: 错误: 无法将类 Pl
+uginManager中的构造器 PluginManager应用到给定类型;
+		pluginManager = new PluginManager(false, mock(EventBus.class), mock(Scheduler.class), configManager, () -> null, null
+);
+		                ^
+  需要: boolean,boolean,EventBus,Scheduler,ConfigManager,Provider<GameEventManager>,PluginModuleFactory
+  找到:    boolean,EventBus,Scheduler,ConfigManager,()->null,<空值>
+  原因: 实际参数列表和形式参数列表长度不同
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\PluginManagerTest.java:143: 错误: 无法将类 PluginMan
+ager中的构造器 PluginManager应用到给定类型;
+		var pluginManager = new PluginManager(false, null, null, null, null);
+		                    ^
+  需要: boolean,boolean,EventBus,Scheduler,ConfigManager,Provider<GameEventManager>,PluginModuleFactory
+  找到:    boolean,<空值>,<空值>,<空值>,<空值>
+  原因: 实际参数列表和形式参数列表长度不同
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\PluginManagerTest.java:161: 错误: 无法将类 PluginMan
+ager中的构造器 PluginManager应用到给定类型;
+		PluginManager pluginManager = new PluginManager(false, true, null, null, null, null);
+		                              ^
+  需要: boolean,boolean,EventBus,Scheduler,ConfigManager,Provider<GameEventManager>,PluginModuleFactory
+  找到:    boolean,boolean,<空值>,<空值>,<空值>,<空值>
+  原因: 实际参数列表和形式参数列表长度不同
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\plugins\PluginManagerTest.java:172: 错误: 无法将类 PluginMan
+ager中的构造器 PluginManager应用到给定类型;
+		PluginManager pluginManager = new PluginManager(false, null, null, null, null);
+		                              ^
+  需要: boolean,boolean,EventBus,Scheduler,ConfigManager,Provider<GameEventManager>,PluginModuleFactory
+  找到:    boolean,<空值>,<空值>,<空值>,<空值>
+  原因: 实际参数列表和形式参数列表长度不同
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\ui\ClientUITest.java:78: 错误: 找不到符号
+		ConsoleLogAppender consoleLogAppender = (ConsoleLogAppender) get("consoleLogAppender");
+		^
+  符号:   类 ConsoleLogAppender
+  位置: 类 ClientUITest
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\ui\ClientUITest.java:78: 错误: 找不到符号
+		ConsoleLogAppender consoleLogAppender = (ConsoleLogAppender) get("consoleLogAppender");
+		                                         ^
+  符号:   类 ConsoleLogAppender
+  位置: 类 ClientUITest
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\ui\ClientUITest.java:87: 错误: 找不到符号
+			ConsoleLogAppender.bindStdoutAppenders(context, ConsoleTarget.SystemOut.getStream());
+			^
+  符号:   变量 ConsoleLogAppender
+  位置: 类 ClientUITest
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\ui\ConsoleLogAppenderTest.java:71: 错误: 找不到符号
+		ConsoleLogAppender.bindStdoutAppenders(context, terminal);
+		^
+  符号:   变量 ConsoleLogAppender
+  位置: 类 ConsoleLogAppenderTest
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\ui\ConsoleLogAppenderTest.java:72: 错误: 找不到符号
+		ConsoleLogAppender appender = new ConsoleLogAppender(console::append);
+		^
+  符号:   类 ConsoleLogAppender
+  位置: 类 ConsoleLogAppenderTest
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\ui\ConsoleLogAppenderTest.java:72: 错误: 找不到符号
+		ConsoleLogAppender appender = new ConsoleLogAppender(console::append);
+		                                  ^
+  符号:   类 ConsoleLogAppender
+  位置: 类 ConsoleLogAppenderTest
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\ui\ConsoleLogAppenderTest.java:105: 错误: 找不到符号
+		ConsoleLogAppender.bindStdoutAppenders(context, terminal);
+		^
+  符号:   变量 ConsoleLogAppender
+  位置: 类 ConsoleLogAppenderTest
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\ui\ConsoleLogAppenderTest.java:122: 错误: 找不到符号
+		ConsoleLogAppender.install(context, terminal, console::append);
+		^
+  符号:   变量 ConsoleLogAppender
+  位置: 类 ConsoleLogAppenderTest
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\ui\ConsoleLogAppenderTest.java:142: 错误: 找不到符号
+		ConsoleLogAppender.install(context, terminal, console::append);
+		^
+  符号:   变量 ConsoleLogAppender
+  位置: 类 ConsoleLogAppenderTest
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\ui\ConsoleLogAppenderTest.java:159: 错误: 找不到符号
+		ConsoleLogAppender appender = ConsoleLogAppender.install(context, new ByteArrayOutputStream(), line -> { });
+		^
+  符号:   类 ConsoleLogAppender
+  位置: 类 ConsoleLogAppenderTest
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\ui\ConsoleLogAppenderTest.java:159: 错误: 找不到符号
+		ConsoleLogAppender appender = ConsoleLogAppender.install(context, new ByteArrayOutputStream(), line -> { });
+		                              ^
+  符号:   变量 ConsoleLogAppender
+  位置: 类 ConsoleLogAppenderTest
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\ui\ConsoleLogAppenderTest.java:171: 错误: 找不到符号
+		ConsoleLogAppender appender = ConsoleLogAppender.install(context, new ByteArrayOutputStream(), line -> { });
+		^
+  符号:   类 ConsoleLogAppender
+  位置: 类 ConsoleLogAppenderTest
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\ui\ConsoleLogAppenderTest.java:171: 错误: 找不到符号
+		ConsoleLogAppender appender = ConsoleLogAppender.install(context, new ByteArrayOutputStream(), line -> { });
+		                              ^
+  符号:   变量 ConsoleLogAppender
+  位置: 类 ConsoleLogAppenderTest
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\ui\ConsoleLogAppenderTest.java:176: 错误: 找不到符号
+		for (int i = 0; i < ConsoleLogAppender.MAX_REBIND_ATTEMPTS - 1; i++)
+		                    ^
+  符号:   变量 ConsoleLogAppender
+  位置: 类 ConsoleLogAppenderTest
+D:\MicrobotNew\runelite-client\src\test\java\net\runelite\client\ui\ConsoleLogAppenderTest.java:192: 错误: 找不到符号
+		ConsoleLogAppender.install(context, new ByteArrayOutputStream(), console::append).uninstall();
+		^
+  符号:   变量 ConsoleLogAppender
+  位置: 类 ConsoleLogAppenderTest
+注: 某些输入文件使用或覆盖了已过时的 API。
+注: 有关详细信息, 请使用 -Xlint:deprecation 重新编译。
+注: 某些输入文件使用了未经检查或不安全的操作。
+注: 有关详细信息, 请使用 -Xlint:unchecked 重新编译。
+56 个错误
+83 个警告
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':client:compileTestJava'.
+> Compilation failed; see the compiler error output for details.
+
+* Try:
+> Run with --info option to get more log output.
+> Run with --scan to get full insights.
+
+BUILD FAILED in 25s

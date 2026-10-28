@@ -1,0 +1,419 @@
+﻿.\gradlew.bat : D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\tile\Rs2Tile.jav
+a:34: 警告: Not generating getDangerousGraphicsObjectTiles(): A method with that name already exists
+At C:\Users\Administrator\AppData\Local\Temp\ps-script-fd1b07e1-1c38-4528-9f80-74cc23b9c869.ps1:80 char:20
++ ... icrobotNew; .\gradlew.bat :client:compileJava --offline -q 2>&1 | Out ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (D:\MicrobotNew\... already exists:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+    @Getter
+    ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\tile\Rs2Tile.java:39: 警告: Not ge
+nerating getDangerousLocalTiles(): A method with that name already exists
+    @Getter
+    ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\api\tileobject\models\Rs2TileObjectMo
+del.java:420: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+            return Rs2GameObject.isReachable((GameObject) tileObject);
+                   ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\questhelper\logic\PiratesTreasure.jav
+a:101: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                Rs2GameObject.interact(2072, "Search", 10);
+                ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\questhelper\logic\PiratesTreasure.jav
+a:106: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+                    Rs2Npc.interact("Luthas", "Talk-to");
+                    ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\questhelper\logic\PiratesTreasure.jav
+a:129: 警告: [removal] net.runelite.client.plugins.microbot.util.grounditem 中的 Rs2GroundItem 已过时, 且标记为待删除
+                    Rs2GroundItem.loot(SPADE);
+                    ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\questhelper\logic\PiratesTreasure.jav
+a:158: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+            Rs2GameObject.interact(2072, "Fill", 10);
+            ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\questhelper\logic\PiratesTreasure.jav
+a:173: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+            Rs2GameObject.interact("Banana Tree", "Pick");
+            ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\questhelper\logic\RomeoAndJuliet.java
+:61: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        Rs2GameObject.interact(ObjectID.FAI_VARROCK_STAIRS_TALLER, "Climb-up");
+        ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\questhelper\logic\RomeoAndJuliet.java
+:85: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        Rs2GameObject.interact(ObjectID.FAI_VARROCK_STAIRS_TOP, "Climb-down");
+        ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\questhelper\logic\RomeoAndJuliet.java
+:107: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+            Rs2GameObject.interact(new int[] {ObjectID.FAI_VARROCK_CADAVABUSH_2, ObjectID.FAI_VARROCK_CADAVABUSH_1, Obj
+ectID.FAI_VARROCK_CADAVABUSH_0}, "take");
+            ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\questhelper\logic\RuneMysteries.java:
+34: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+                var npc = Rs2Npc.getNpc(NpcID.AUBURY_2OP);
+                          ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\questhelper\logic\RuneMysteries.java:
+38: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+                    Rs2Npc.interact(npc, "Talk-to");
+                    ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\questhelper\logic\RuneMysteries.java:
+55: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+                    var npc = Rs2Npc.getNpc(NpcID.DUKE_OF_LUMBRIDGE);
+                              ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\questhelper\logic\RuneMysteries.java:
+59: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+                        Rs2Npc.interact(npc, "Talk-to");
+                        ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\questhelper\logic\RuneMysteries.java:
+79: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+                    var npc = Rs2Npc.getNpc(NpcID.HEAD_WIZARD_1OP);
+                              ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\questhelper\logic\RuneMysteries.java:
+83: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+                        Rs2Npc.interact(npc, "Talk-to");
+                        ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\testing\release\ReleaseSmokeChecks.ja
+va:484: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+        net.runelite.client.plugins.microbot.util.npc.Rs2NpcModel banker = Rs2Npc.getNpc("Banker", true);
+                                                                           ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\testing\release\ReleaseSmokeChecks.ja
+va:486: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+        context.require(Rs2Npc.interact(banker, "Talk-to"), "Talk-to banker interaction failed");
+                        ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\bank\Rs2Bank.java:2037: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                            Rs2GameObject.findBank(),
+                            ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\bank\Rs2Bank.java:2038: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                            Rs2GameObject.findGrandExchangeBooth()
+                            ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\bank\Rs2Bank.java:2043: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+            Optional<TileObject> nearestObj = Rs2GameObject.pickClosest(
+                                              ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\bank\Rs2Bank.java:2050: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                if (!Rs2GameObject.interact(nearestObj.get(), "Bank")) return false;
+                     ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\bank\Rs2Bank.java:2052: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+                final Rs2NpcModel banker = Rs2Npc.getBankerNPC();
+                                           ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\bank\Rs2Bank.java:2053: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+                if (banker == null || !Rs2Npc.interact(banker, "Bank")) return false;
+                                       ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\bank\Rs2Bank.java:2085: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                            Rs2GameObject.findBank(),
+                            ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\bank\Rs2Bank.java:2086: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                            Rs2GameObject.findGrandExchangeBooth()
+                            ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\bank\Rs2Bank.java:2091: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+            Optional<TileObject> nearestObj = Rs2GameObject.pickClosest(
+                                              ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\bank\Rs2Bank.java:2098: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                if (!Rs2GameObject.interact(nearestObj.get(), "Collect")) return false;
+                     ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\bank\Rs2Bank.java:2100: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+                Rs2NpcModel banker = Rs2Npc.getBankerNPC();
+                                     ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\bank\Rs2Bank.java:2102: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+                if (!Rs2Npc.interact(banker, "Collect")) return false;
+                     ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\bank\Rs2Bank.java:2179: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+            boolean interactResult = Rs2Npc.interact(npc, "bank");
+                                     ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\bank\Rs2Bank.java:2217: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+            boolean interactResult = Rs2GameObject.interact(object, "bank");
+                                     ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\bank\Rs2Bank.java:2417: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                            Stream.of(Rs2GameObject.findBank(maxObjectSearchRadius)),
+                                      ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\bank\Rs2Bank.java:2418: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                            Stream.of(Rs2GameObject.findGrandExchangeBooth(maxObjectSearchRadius))
+                                      ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\bank\Rs2Bank.java:2981: 警告: [rem
+oval] Microbot 中的 getAggregateLootRecords() 已过时, 且标记为待删除
+        for (LootTrackerRecord lootTrackerRecord : Microbot.getAggregateLootRecords()) {
+                                                           ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\bank\Rs2Bank.java:3423: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+            GameObject bank = Rs2GameObject.findBank();
+                              ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\bank\Rs2Bank.java:3428: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+            WallObject grandExchangeBooth = Rs2GameObject.findGrandExchangeBooth();
+                                            ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\bank\Rs2Bank.java:3433: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+            Rs2NpcModel npc = Rs2Npc.getBankerNPC();
+                              ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\bank\Rs2Bank.java:3703: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+            TileObject[] candidates = {Rs2GameObject.findBank(), Rs2GameObject.findGrandExchangeBooth()};
+                                       ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\bank\Rs2Bank.java:3703: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+            TileObject[] candidates = {Rs2GameObject.findBank(), Rs2GameObject.findGrandExchangeBooth()};
+                                                                 ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\depositbox\Rs2DepositBox.java:95
+: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+            GameObject depositBox = Rs2GameObject.findDepositBox();
+                                    ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\depositbox\Rs2DepositBox.java:98
+: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                action = Rs2GameObject.interact(depositBox, "Deposit");
+                         ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\depositbox\Rs2DepositBox.java:47
+0: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+            GameObject depositBoxObj = Rs2GameObject.findDepositBox(maxObjectSearchRadius);
+                                       ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\grandexchange\Rs2GrandExchange.j
+ava:134: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+            Rs2NpcModel npc = Rs2Npc.getNpc("Grand Exchange Clerk");
+                              ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\grandexchange\Rs2GrandExchange.j
+ava:138: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+            Rs2Npc.interact(npc, "exchange");
+            ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\magic\Rs2Spellbook.java:258: 警告:
+ [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                    if (!Rs2GameObject.getGameObjects(o -> o.getId() == ANCIENT.getGameID(), maxSearchRadius).isEmpty()
+) {
+                         ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\magic\Rs2Spellbook.java:260: 警告:
+ [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                    } else if (!Rs2GameObject.getGameObjects(o -> o.getId() == LUNAR.getGameID(), maxSearchRadius).isEm
+pty()) {
+                                ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\magic\Rs2Spellbook.java:293: 警告:
+ [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        GameObject altarObject = Rs2GameObject.getGameObjects(o -> finalTargetAltarSpellbook.getGameID().equals(o.getId
+()), maxSearchRadius).stream()
+                                 ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\magic\Rs2Spellbook.java:305: 警告:
+ [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        if (Rs2GameObject.interact(altarObject, "Pray")) {
+            ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\magic\Rs2Spellbook.java:323: 警告:
+ [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+                if (Rs2Npc.interact("Tyss", "Spellbook")) {
+                    ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\magic\Rs2Spellbook.java:338: 警告:
+ [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+                if (Rs2Npc.interact("Tyss", "Spellbook")) {
+                    ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\magic\Rs2Spellbook.java:454: 警告:
+ [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                if (!Rs2GameObject.getGameObjects(o -> spellbook.getGameID().equals(o.getId()), maxSearchRadius).isEmpt
+y()) {
+                     ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\magic\Rs2Spellbook.java:468: 警告:
+ [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+        return Rs2Npc.getNpc(ARCEUUS.getGameID()) != null;
+               ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\player\Rs2Player.java:1544: 警告: 
+[removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        return Rs2GameObject.getGameObject(o -> Objects.equals(playerPoint, o.getWorldLocation())) != null || isStandin
+gOnGroundItem();
+               ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\player\Rs2Player.java:1554: 警告: 
+[removal] net.runelite.client.plugins.microbot.util.grounditem 中的 Rs2GroundItem 已过时, 且标记为待删除
+        return Rs2GroundItem.getGroundItems().values().stream().anyMatch(x -> x.getLocation().equals(playerPoint));
+               ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\shop\models\Rs2ShopSource.java:1
+45: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+        List<Rs2NpcModel> npcs = Rs2Npc.getNpcs().collect(Collectors.toList());
+                                 ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\shop\models\Rs2ShopSource.java:1
+59: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+        List<Rs2NpcModel> npcs = Rs2Npc.getNpcs().collect(Collectors.toList());
+                                 ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\tile\Rs2Tile.java:1081: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        Rs2WorldArea gameObjectArea = new Rs2WorldArea(Objects.requireNonNull(Rs2GameObject.getWorldArea(tileObject)));
+                                                                              ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\tile\Rs2Tile.java:1167: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        return Rs2GameObject.getWallObjects().stream().filter(x -> x.getWorldLocation().equals(source)).findFirst().orE
+lse(null) != null;
+               ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\tile\Rs2Tile.java:1188: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        GameObject gameObject = Rs2GameObject.getGameObjects().stream().filter(x -> x.getWorldLocation().equals(source)
+).findFirst().orElse(null);
+                                ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\tile\Rs2Tile.java:1190: 警告: [rem
+oval] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+            ObjectComposition objectComposition = Rs2GameObject.convertToObjectComposition(gameObject);
+                                                  ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\tileobject\Rs2TileObjectModel.ja
+va:28: 警告: [removal] net.runelite.client.plugins.microbot.util.tileobject 中的 TileObjectType 已过时, 且标记为待删除
+        this.tileObjectType = TileObjectType.GAME;
+                              ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\tileobject\Rs2TileObjectModel.ja
+va:33: 警告: [removal] net.runelite.client.plugins.microbot.util.tileobject 中的 TileObjectType 已过时, 且标记为待删除
+        this.tileObjectType = TileObjectType.DECORATIVE;
+                              ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\tileobject\Rs2TileObjectModel.ja
+va:38: 警告: [removal] net.runelite.client.plugins.microbot.util.tileobject 中的 TileObjectType 已过时, 且标记为待删除
+        this.tileObjectType = TileObjectType.WALL;
+                              ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\tileobject\Rs2TileObjectModel.ja
+va:43: 警告: [removal] net.runelite.client.plugins.microbot.util.tileobject 中的 TileObjectType 已过时, 且标记为待删除
+        this.tileObjectType = TileObjectType.GROUND;
+                              ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\tileobject\Rs2TileObjectModel.ja
+va:48: 警告: [removal] net.runelite.client.plugins.microbot.util.tileobject 中的 TileObjectType 已过时, 且标记为待删除
+        this.tileObjectType = TileObjectType.GENERIC;
+                              ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\tileobject\Rs2TileObjectModel.ja
+va:52: 警告: [removal] net.runelite.client.plugins.microbot.util.tileobject 中的 TileObjectType 已过时, 且标记为待删除
+    private final TileObjectType tileObjectType;
+                  ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\tileobject\Rs2TileObjectModel.ja
+va:52: 警告: [removal] net.runelite.client.plugins.microbot.util.tileobject 中的 TileObjectType 已过时, 且标记为待删除
+    private final TileObjectType tileObjectType;
+                  ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\tileobject\Rs2TileObjectModel.ja
+va:52: 警告: [removal] net.runelite.client.plugins.microbot.util.tileobject 中的 TileObjectType 已过时, 且标记为待删除
+    private final TileObjectType tileObjectType;
+                  ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\tileobject\Rs2TileObjectModel.ja
+va:52: 警告: [removal] net.runelite.client.plugins.microbot.util.tileobject 中的 TileObjectType 已过时, 且标记为待删除
+    private final TileObjectType tileObjectType;
+                  ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\tileobject\Rs2TileObjectModel.ja
+va:52: 警告: [removal] net.runelite.client.plugins.microbot.util.tileobject 中的 TileObjectType 已过时, 且标记为待删除
+    private final TileObjectType tileObjectType;
+                  ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\tileobject\Rs2TileObjectModel.ja
+va:201: 警告: [removal] net.runelite.client.plugins.microbot.util.tileobject 中的 TileObjectType 已过时, 且标记为待删除
+            if (getTileObjectType() == TileObjectType.GAME) {
+                                       ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\tileobject\Rs2TileObjectModel.ja
+va:51: 警告: [removal] net.runelite.client.plugins.microbot.util.tileobject 中的 TileObjectType 已过时, 且标记为待删除
+    @Getter
+    ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\tileobject\Rs2TileObjectModel.ja
+va:51: 警告: [removal] net.runelite.client.plugins.microbot.util.tileobject 中的 TileObjectType 已过时, 且标记为待删除
+    @Getter
+    ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\tileobject\Rs2TileObjectModel.ja
+va:51: 警告: [removal] net.runelite.client.plugins.microbot.util.tileobject 中的 TileObjectType 已过时, 且标记为待删除
+    @Getter
+    ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\tileobject\Rs2TileObjectModel.ja
+va:51: 警告: [removal] net.runelite.client.plugins.microbot.util.tileobject 中的 TileObjectType 已过时, 且标记为待删除
+    @Getter
+    ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\tileobject\Rs2TileObjectModel.ja
+va:51: 警告: [removal] net.runelite.client.plugins.microbot.util.tileobject 中的 TileObjectType 已过时, 且标记为待删除
+    @Getter
+    ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\walker\puzzles\DraynorBasementSo
+lver.java:240: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+					|| !Rs2GameObject.interact(ObjectID.PUZZLE_LADDER_TOP, "Climb-down")
+					    ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\walker\puzzles\DraynorBasementSo
+lver.java:321: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+		if (Rs2GameObject.interact(LEVER_OBJ[leverIndex], "Pull")
+		    ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\walker\puzzles\DraynorBasementSo
+lver.java:339: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+			|| (Rs2GameObject.interact(LEVER_OBJ[leverIndex], "Pull")
+			    ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\walker\Rs2WalkerTransports.java:
+452: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+                                    : Rs2Npc.getNpc(transport.getName());
+                                      ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\walker\Rs2WalkerTransports.java:
+453: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+                            boolean npcUsable = npc != null && Rs2Npc.canWalkTo(npc, 20);
+                                                               ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\walker\Rs2WalkerTransports.java:
+484: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+                                if (attemptObserved(transport, () -> Rs2Npc.interact(npc, npcAction))) {
+                                                                     ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\walker\Rs2WalkerTransports.java:
+560: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                                    if (attemptObserved(transport, () -> Rs2GameObject.interact(
+                                                                         ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\walker\Rs2WalkerTransports.java:
+821: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                        matched = Rs2GameObject.getAll(
+                                  ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\walker\Rs2WalkerTransports.java:
+826: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                        matched = Rs2GameObject.getAll(o -> {
+                                  ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\walker\Rs2WalkerTransports.java:
+839: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                        matched = Rs2GameObject.getAll(o -> {
+                                  ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\walker\Rs2WalkerTransports.java:
+840: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                            ObjectComposition comp = Rs2GameObject.convertToObjectComposition(o);
+                                                     ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\walker\Rs2WalkerTransports.java:
+883: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                        ObjectComposition comp = Rs2GameObject.convertToObjectComposition(object);
+                                                 ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\walker\Rs2WalkerTransports.java:
+893: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                                if (Rs2GameObject.interact(object, "Open")) {
+                                    ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\walker\Rs2WalkerTransports.java:
+897: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                                TileObject reopened = Rs2GameObject.getAll(o -> {
+                                                      ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\walker\Rs2WalkerTransports.java:
+899: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                                    ObjectComposition c = Rs2GameObject.convertToObjectComposition(o);
+                                                          ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\walker\Rs2WalkerTransports.java:
+1196: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+        if (Rs2Npc.interact(purchasable.vendorNpcId, purchasable.vendorAction)) {
+            ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\walker\Rs2WalkerTransports.java:
+1208: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        if (!Rs2GameObject.interact(tileObject, action)) {
+             ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\walker\Rs2WalkerTransports.java:
+1598: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+        TileObject object = Rs2GameObject.getAll(
+                            ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\walker\Rs2WalkerTransports.java:
+1701: 警告: [removal] net.runelite.client.plugins.microbot.util.npc 中的 Rs2Npc 已过时, 且标记为待删除
+            String available = Rs2Npc.getAvailableAction(npc, Collections.singletonList(candidate));
+                               ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\walker\Rs2WalkerTransports.java:
+1847: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                    Rs2GameObject.interact(tileObject, "Open");
+                    ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\walker\Rs2WalkerTransports.java:
+1848: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                    sleepUntil(() -> Rs2GameObject.exists(openTrapdoorId));
+                                     ^
+D:\MicrobotNew\runelite-client\src\main\java\net\runelite\client\plugins\microbot\util\walker\Rs2WalkerTransports.java:
+1849: 警告: [removal] net.runelite.client.plugins.microbot.util.gameobject 中的 Rs2GameObject 已过时, 且标记为待删除
+                    TileObject openTrapdoor = Rs2GameObject.getAll(o -> o.getId() == openTrapdoorId, tileObject.getWorl
+dLocation(), 10).stream().findFirst().orElse(null);
+                                              ^
+注: 某些输入文件使用或覆盖了已过时的 API。
+注: 有关详细信息, 请使用 -Xlint:deprecation 重新编译。
+注: 某些输入文件额外使用或覆盖了标记为待删除的已过时 API。
+100 个警告

@@ -132,16 +132,26 @@ public class Rs2TileObjectModelClickRecoveryTest {
     }
 
     @Test
-    public void pausesScriptsOnceRetriesAreExhausted() {
+    public void abandonsOnceRetriesAreExhausted() {
         Microbot.cantReachTarget = true;
         Microbot.cantReachTargetRetries = 5;
         boolean savedPause = Microbot.pauseAllScripts.get();
         try {
             assertFalse(new Rs2TileObjectModel(object).click("Open"));
 
-            assertTrue(Microbot.pauseAllScripts.get());
+            // 耗尽后不再弹模态窗、不再全局暂停脚本，只放弃本轮恢复并清掉失败标记
+            assertFalse(Microbot.pauseAllScripts.get());
+            microbot.verify(() -> Microbot.showMessage(any(String.class)), never());
+            assertFalse(Microbot.cantReachTarget);
+            assertEquals(0, Microbot.cantReachTargetRetries);
             walker.verify(() -> Rs2Walker.walkTo(any(WorldPoint.class), anyInt()), never());
             microbot.verify(() -> Microbot.doInvoke(any(NewMenuEntry.class), any(Rectangle.class)), never());
+
+            // 没有冷却：下一轮检测到 can't-reach 时会立刻重新开始恢复
+            Microbot.cantReachTarget = true;
+            walker.when(() -> Rs2Walker.walkTo(eq(DOOR), eq(2))).thenReturn(true);
+            assertTrue(new Rs2TileObjectModel(object).click("Open"));
+            walker.verify(() -> Rs2Walker.walkTo(eq(DOOR), eq(2)), times(1));
         } finally {
             Microbot.pauseAllScripts.set(savedPause);
         }

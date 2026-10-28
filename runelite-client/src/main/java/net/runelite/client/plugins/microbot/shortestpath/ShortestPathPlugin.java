@@ -51,6 +51,7 @@ import net.runelite.client.plugins.microbot.shortestpath.pathfinder.CollisionMap
 import net.runelite.client.plugins.microbot.shortestpath.pathfinder.Pathfinder;
 import net.runelite.client.plugins.microbot.shortestpath.pathfinder.PathfinderConfig;
 import net.runelite.client.plugins.microbot.util.walker.WebWalkLog;
+import net.runelite.client.plugins.microbot.util.walker.WalkerLogSwitch;
 import net.runelite.client.plugins.microbot.shortestpath.pathfinder.live.LiveCollisionCapture;
 import net.runelite.client.plugins.microbot.shortestpath.pathfinder.live.LiveCollisionConflicts;
 import net.runelite.client.plugins.microbot.shortestpath.pathfinder.live.LiveCollisionOverlay;
@@ -450,24 +451,12 @@ public class ShortestPathPlugin extends Plugin {
     private static final String RESET_LEARNED_COLLISION_KEY = "resetLearnedCollision";
 
     /**
-     * Logger packages the "Verbose console logging" debug toggle controls. Setting them to DEBUG at
-     * runtime surfaces the walker's debug detail (walkerDiag, partial_seg, interim continuation clicks,
-     * pathfinder diagnostics) in the console without restarting the client with a debug logback config.
-     * Console only: GameChatAppender's chat mirror has its own WARN threshold and is unaffected.
+     * "Verbose console logging" 开关现在统一委托给 {@link WalkerLogSwitch}：关闭时寻路日志
+     * （{@code [WebWalk]}、{@code [Walker]}、{@code [WalkerTelemetry]}、pathfinder 诊断等）
+     * 全部静音，只保留 ERROR；开启时输出 DEBUG 细节。
      */
-    private static final String[] VERBOSE_WALKER_LOGGER_PACKAGES = {
-            "net.runelite.client.plugins.microbot.util.walker",
-            "net.runelite.client.plugins.microbot.shortestpath"
-    };
-
     private static void applyVerboseWalkerLogging(boolean verbose) {
-        for (String pkg : VERBOSE_WALKER_LOGGER_PACKAGES) {
-            ch.qos.logback.classic.Logger logger =
-                    (ch.qos.logback.classic.Logger) org.slf4j.LoggerFactory.getLogger(pkg);
-            // null = inherit the parent level (normal INFO); DEBUG opts the subtree in.
-            logger.setLevel(verbose ? ch.qos.logback.classic.Level.DEBUG : null);
-        }
-        log.info("[ShortestPath] verbose walker console logging {}", verbose ? "enabled" : "disabled");
+        WalkerLogSwitch.setEnabled(verbose);
     }
     private final Pattern TRANSPORT_OPTIONS_REGEX = Pattern.compile("^use\\w+$");
 

@@ -1,10 +1,14 @@
 package net.runelite.client.plugins.microbot.api.player.models;
 
 import java.awt.Polygon;
+import java.util.Objects;
+
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.HeadIcon;
 import net.runelite.api.Player;
 import net.runelite.api.PlayerComposition;
+import net.runelite.api.WorldView;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.api.IEntity;
@@ -12,8 +16,11 @@ import net.runelite.client.plugins.microbot.api.actor.Rs2ActorModel;
 import net.runelite.client.plugins.microbot.api.boat.Rs2BoatCache;
 import net.runelite.client.plugins.microbot.api.player.data.SalvagingAnimations;
 import net.runelite.client.plugins.microbot.util.ActorModel;
+import net.runelite.client.plugins.microbot.util.math.Rs2Random;
+import net.runelite.client.plugins.microbot.util.walker.recovery.CantReachTargetRecovery;
 
 @Getter
+@Slf4j
 public class Rs2PlayerModel extends Rs2ActorModel implements IEntity {
 
     private final Player player;
@@ -52,7 +59,7 @@ public class Rs2PlayerModel extends Rs2ActorModel implements IEntity {
      */
     @Override
     public boolean click() {
-        return false;
+        return click("");
     }
 
     /**
@@ -67,8 +74,21 @@ public class Rs2PlayerModel extends Rs2ActorModel implements IEntity {
      * @return false (not implemented)
      */
     @Override
-    public boolean click(String action) {
-        return false;
+    public boolean click(String action) {return false;}
+
+    public boolean hasLineOfSight() {
+        if (player == null) return false;
+
+        final WorldPoint playerLoc = getWorldLocation();
+        if (playerLoc == null) return false;
+
+        final WorldPoint myLoc = new Rs2PlayerModel().getWorldLocation();
+        if (myLoc == null) return false;
+
+        if (playerLoc.equals(myLoc)) return true;
+
+        final WorldView wv = Microbot.getClient().getTopLevelWorldView();
+        return wv != null && playerLoc.toWorldArea().hasLineOfSightTo(wv, myLoc);
     }
 
     // Sailing stuff

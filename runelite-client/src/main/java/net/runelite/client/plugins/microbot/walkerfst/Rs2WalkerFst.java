@@ -115,6 +115,7 @@ public class Rs2WalkerFst {
 
     @Setter
     public static ShortestPathConfigFst config;
+
     // stuck/movement tracking state migrated to WalkerRouteState (see routeState)
     static volatile WorldPoint currentTarget;
     private static final Object currentTargetOwnershipMutex = new Object();
@@ -170,8 +171,13 @@ public class Rs2WalkerFst {
      * a circular radius, so diagonal targets may still begin inside that band without churning.
      */
     private static final int ROUTE_CLICK_REACH_MIN_TILES = 9;
-    private static final int INTERIM_PRECLICK_TILES = 6;
-    private static final int INTERIM_RUN_PRECLICK_TILES = 8;
+    private static final int INTERIM_PRECLICK_TILES = 4;
+    /**
+     * 交接半径（跑步）。Fst 的小地图点击上限是 {@code MINIMAP_COMMAND_RADIUS = 10} 格，
+     * 原值 8 意味着点完只要跑 2 格就满足交接——小地图几乎每 0.6 秒被点一次。
+     * 基础值压到 5 后单次点击可覆盖约 5 格；再小会被 {@link #INTERIM_CLOSE_TILES}(5) 截住。
+     */
+    private static final int INTERIM_RUN_PRECLICK_TILES = 5;
     private static final int INTERIM_HANDOFF_MIN_PROGRESS_TILES = 2;
     private static final int INTERIM_MOVING_POLL_MS = 450;
     private static final long INTERIM_PROGRESS_TIMEOUT_MS = 2500L;

@@ -2075,7 +2075,14 @@ final class Rs2WalkerDoors {
 
     static boolean hasDoorLikeSceneObjectOnSegment(WorldPoint fromWp, WorldPoint toWp,
                                                            WorldPoint playerLoc, int radiusTiles) {
-        if (fromWp == null || toWp == null || playerLoc == null || radiusTiles <= 0) {
+        return hasDoorLikeSceneObjectOnSegment(fromWp, toWp, playerLoc, radiusTiles,
+                DoorSceneSnapshot.capture(playerLoc, radiusTiles));
+    }
+
+    static boolean hasDoorLikeSceneObjectOnSegment(WorldPoint fromWp, WorldPoint toWp,
+                                                           WorldPoint playerLoc, int radiusTiles,
+                                                           DoorSceneSnapshot snapshot) {
+        if (fromWp == null || toWp == null || playerLoc == null || radiusTiles <= 0 || snapshot == null) {
             return false;
         }
         if (fromWp.getPlane() != toWp.getPlane() || fromWp.getPlane() != playerLoc.getPlane()) {
@@ -2085,17 +2092,47 @@ final class Rs2WalkerDoors {
             return false;
         }
 
-        for (WallObject wall : Rs2GameObject.getWallObjects(o -> true, playerLoc, radiusTiles)) {
+        for (WallObject wall : snapshot.walls) {
             if (isPendingRouteDoorObject(wall, fromWp, toWp, playerLoc, radiusTiles)) {
                 return true;
             }
         }
-        for (GameObject object : Rs2GameObject.getGameObjects(o -> true, playerLoc, radiusTiles)) {
+        for (GameObject object : snapshot.objects) {
             if (isPendingRouteDoorObject(object, fromWp, toWp, playerLoc, radiusTiles)) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * 一次场景扫描的结果，供同一段路线上的多条边复用。
+     *
+     * <p>门类判定要沿着路线逐边地问"这一边上有没有门"，但"这个对象是不是门、在不在这一边上"
+     * 只取决于对象本身和这条边，与扫了几遍场景无关。原先每一遍边都重新扫一次场景
+     * （半径 13 格 ≈ 729 个 tile，墙对象 + 场景对象各一次），而续点击路径一次要问
+     * 12 条边（回看 2 + 前看 10），等于最多 24 次全场景扫描。</p>
+     *
+     * <p>这些扫描就发生在"决定能不能发下一次点击"的路径上，几百毫秒耗在这里，
+     * 玩家早就跑过旗子停住了——表现就是"点慢了"。改成扫一次、逐边复用。</p>
+     */
+    static final class DoorSceneSnapshot {
+        private final List<WallObject> walls;
+        private final List<GameObject> objects;
+
+        private DoorSceneSnapshot(List<WallObject> walls, List<GameObject> objects) {
+            this.walls = walls;
+            this.objects = objects;
+        }
+
+        static DoorSceneSnapshot capture(WorldPoint playerLoc, int radiusTiles) {
+            if (playerLoc == null || radiusTiles <= 0) {
+                return new DoorSceneSnapshot(Collections.emptyList(), Collections.emptyList());
+            }
+            return new DoorSceneSnapshot(
+                    Rs2GameObject.getWallObjects(o -> true, playerLoc, radiusTiles),
+                    Rs2GameObject.getGameObjects(o -> true, playerLoc, radiusTiles));
+        }
     }
 
     static boolean hasUnresolvedDoorLikeObjectNearRawPath(List<WorldPoint> rawPath,
@@ -2110,6 +2147,8 @@ final class Rs2WalkerDoors {
 
         int start = Math.max(0, rawEdgeStart - Math.max(0, backtrackEdges));
         int endExclusive = Math.min(rawPath.size() - 1, rawEdgeStart + Math.max(1, lookaheadEdges));
+        // 场景只扫一次，逐边复用（见 DoorSceneSnapshot）；惰性到第一条真正要看门的边再扫。
+        DoorSceneSnapshot snapshot = null;
         for (int ri = start; ri < endExclusive && ri < rawPath.size() - 1; ri++) {
             WorldPoint from = rawPath.get(ri);
             WorldPoint to = rawPath.get(ri + 1);
@@ -2125,7 +2164,10 @@ final class Rs2WalkerDoors {
             if (shouldDeferDoorHandlingToTransport(rawPath, ri)) {
                 continue;
             }
-            if (hasUnresolvedDoorLikeSceneObjectOnSegment(from, to, playerLoc, radiusTiles)) {
+            if (snapshot == null) {
+                snapshot = DoorSceneSnapshot.capture(playerLoc, radiusTiles);
+            }
+            if (hasUnresolvedDoorLikeSceneObjectOnSegment(from, to, playerLoc, radiusTiles, snapshot)) {
                 return true;
             }
         }
@@ -2134,19 +2176,26 @@ final class Rs2WalkerDoors {
 
     static boolean hasUnresolvedDoorLikeSceneObjectOnSegment(WorldPoint fromWp, WorldPoint toWp,
                                                                      WorldPoint playerLoc, int radiusTiles) {
-        if (fromWp == null || toWp == null || playerLoc == null || radiusTiles <= 0) {
+        return hasUnresolvedDoorLikeSceneObjectOnSegment(fromWp, toWp, playerLoc, radiusTiles,
+                DoorSceneSnapshot.capture(playerLoc, radiusTiles));
+    }
+
+    static boolean hasUnresolvedDoorLikeSceneObjectOnSegment(WorldPoint fromWp, WorldPoint toWp,
+                                                                     WorldPoint playerLoc, int radiusTiles,
+                                                                     DoorSceneSnapshot snapshot) {
+        if (fromWp == null || toWp == null || playerLoc == null || radiusTiles <= 0 || snapshot == null) {
             return false;
         }
         if (fromWp.getPlane() != toWp.getPlane() || fromWp.getPlane() != playerLoc.getPlane()) {
             return false;
         }
 
-        for (WallObject wall : Rs2GameObject.getWallObjects(o -> true, playerLoc, radiusTiles)) {
+        for (WallObject wall : snapshot.walls) {
             if (isUnresolvedRouteDoorObject(wall, fromWp, toWp, playerLoc, radiusTiles)) {
                 return true;
             }
         }
-        for (GameObject object : Rs2GameObject.getGameObjects(o -> true, playerLoc, radiusTiles)) {
+        for (GameObject object : snapshot.objects) {
             if (isUnresolvedRouteDoorObject(object, fromWp, toWp, playerLoc, radiusTiles)) {
                 return true;
             }
@@ -2849,6 +2898,10 @@ final class Rs2WalkerDoors {
                                                     Map<WorldPoint, Integer> reachableCache) {
         WorldPoint playerLoc = reachableCache != null ? Rs2Player.getWorldLocation() : null;
         long startedAt = System.currentTimeMillis();
+        // 场景只扫一次，逐段复用（见 DoorSceneSnapshot）：这段循环里每段都要问一次"这一段有没有门"，
+        // 原先每段都重新全场景扫描，段数一多，光是"判断要不要开门"就能耗掉几百毫秒。
+        // 惰性到第一次真正需要判断时才扫，避免"循环一进来就返回"的路径白白多扫一遍。
+        DoorSceneSnapshot snapshot = null;
         for (int ri = rawFrom; ri < rawTo && ri < rawPath.size() - 1; ri++) {
             long elapsed = System.currentTimeMillis() - startedAt;
             if (elapsed >= timeoutMs) {
@@ -2862,9 +2915,12 @@ final class Rs2WalkerDoors {
             }
             boolean farSideReachable = reachableCache != null
                     && reachableCache.containsKey(rawPath.get(ri + 1));
+            if (snapshot == null) {
+                snapshot = DoorSceneSnapshot.capture(playerLoc, HANDLER_RANGE);
+            }
             boolean doorCandidate = (reachableCache == null || farSideReachable)
                     && hasDoorLikeSceneObjectOnSegment(rawPath.get(ri), rawPath.get(ri + 1),
-                    playerLoc, HANDLER_RANGE);
+                    playerLoc, HANDLER_RANGE, snapshot);
             if (farSideReachable && !doorCandidate) {
                 continue;
             }

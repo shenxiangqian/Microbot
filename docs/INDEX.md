@@ -13,6 +13,7 @@ This is the documentation entry point. Keep it short: it should route readers to
 - Queryable cache guide: [../runelite-client/src/main/java/net/runelite/client/plugins/microbot/api/QUERYABLE_API.md](../runelite-client/src/main/java/net/runelite/client/plugins/microbot/api/QUERYABLE_API.md)
 - Entity utility gotchas: [entity-guides/README.md](entity-guides/README.md)
 - Architecture decisions: [decisions/](decisions/)
+- 更新日志：[/docs/changelog.md](changelog.md)
 
 ## Runtime Agent Tools
 - CLI wrapper: [MICROBOT_CLI.md](MICROBOT_CLI.md)

@@ -32,7 +32,7 @@ public class Rs2WalkerInterimHandoffTest
 	{
 		WorldPoint interim = new WorldPoint(3212, 3200, 0);
 		int initial = Rs2WalkerMovement.distanceToInterimOrMax(interim, PLAYER_START);
-		WorldPoint nowAt = new WorldPoint(3205, 3200, 0);
+		WorldPoint nowAt = new WorldPoint(3208, 3200, 0);
 
 		assertTrue(Rs2WalkerMovement.routeInterimReadyForContinuation(
 			interim, nowAt, initial, false, RUN_HANDOFF));
@@ -174,6 +174,21 @@ public class Rs2WalkerInterimHandoffTest
 	}
 
 	@Test
+	public void oneClickCoversMostOfTheMinimapStride()
+	{
+		// 小地图点击距离（NORMAL_MINIMAP_REACH_EUCLIDEAN - 1 = 12 格）
+		int clickReach = Rs2Walker.NORMAL_MINIMAP_REACH_EUCLIDEAN - 1;
+		// 实际"换下一个点击点"的阈值 = 交接半径上限 与 用完半径 的较大者
+		int reclickAt = Math.max(Rs2WalkerMovement.INTERIM_PRECLICK_MAX_TILES,
+			Rs2Walker.INTERIM_CONSUMED_TILES);
+
+		// 交接半径必须明显小于点击距离，否则点完只剩一两格就换点（小地图被狂点）
+		assertTrue(reclickAt < clickReach - 2);
+		// 一次点击至少覆盖 6 格行程：跑步约 1.8 秒点一次，接近真人节奏
+		assertTrue(clickReach - reclickAt >= 6);
+	}
+
+	@Test
 	public void handoffRadiusIsEuclidean()
 	{
 		WorldPoint center = new WorldPoint(3200, 3200, 0);
@@ -222,8 +237,8 @@ public class Rs2WalkerInterimHandoffTest
 	{
 		// 回合被拉长到 600ms：跑步约走 2 格，换算出的提前量是 1 格
 		assertEquals(1, Rs2WalkerMovement.interimPreclickLookaheadTiles(true, 600.0));
-		// 提前量本身不被截断，但总半径被硬上限压住，不能顶到点击距离
-		assertEquals(Rs2WalkerMovement.INTERIM_PRECLICK_MAX_TILES,
+		// 基础半径 + 1 格前瞻
+		assertEquals(Rs2Walker.INTERIM_RUN_PRECLICK_TILES + 1,
 			Rs2WalkerMovement.interimPreclickTiles(true, 600.0));
 		// 走路慢一半，同样的回合耗时只需要半格余量，向上取整后仍是 1 格
 		assertEquals(1, Rs2WalkerMovement.interimPreclickLookaheadTiles(false, 900.0));
