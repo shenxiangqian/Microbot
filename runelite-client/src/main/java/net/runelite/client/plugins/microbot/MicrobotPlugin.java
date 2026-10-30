@@ -23,9 +23,11 @@ import net.runelite.client.events.OverlayMenuClicked;
 import net.runelite.client.events.RuneScapeProfileChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.microbot.accountselector.TerminalLogoutHold;
 import net.runelite.client.plugins.microbot.alerts.ClientAlertReporter;
 import net.runelite.client.plugins.microbot.alerts.DashboardSync;
 import net.runelite.client.plugins.microbot.alerts.DeviceLinkFlow;
+import net.runelite.client.plugins.microbot.diagnostics.BugReportTracker;
 import net.runelite.client.plugins.microbot.diagnostics.ScriptErrorReporter;
 import net.runelite.client.plugins.microbot.pouch.PouchOverlay;
 import net.runelite.client.plugins.microbot.ui.MicrobotPluginConfigurationDescriptor;
@@ -55,6 +57,7 @@ import net.runelite.client.plugins.microbot.util.tabs.Rs2Tab;
 import net.runelite.client.plugins.microbot.util.widget.Rs2Widget;
 import net.runelite.client.plugins.microbot.util.security.HopBudget;
 import net.runelite.client.plugins.microbot.util.security.LoginManager;
+import net.runelite.client.plugins.microbot.util.security.MembershipRecorder;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.Overlay;
@@ -129,6 +132,8 @@ public class MicrobotPlugin extends Plugin
     @Inject
     private ScriptToolbarController scriptToolbarController;
 
+	private final MembershipRecorder membershipRecorder = new MembershipRecorder(() -> this.eventBus.post(new MembershipRecorder.MembershipSaved()));
+
 	private MicrobotTopLevelConfigPanel topLevelConfigPanel;
 
 	private NavigationButton navButton;
@@ -167,10 +172,16 @@ public class MicrobotPlugin extends Plugin
 	private DashboardSync dashboardSync;
 
 	@Inject
+	private TerminalLogoutHold terminalLogoutHold;
+
+	@Inject
 	private DeviceLinkFlow deviceLinkFlow;
 
 	@Inject
 	private MicrobotHelpMenu helpMenu;
+
+	@Inject
+	private BugReportTracker bugReportTracker;
 
 	@Inject
 	private MicrobotTour tour;
@@ -409,6 +420,10 @@ public class MicrobotPlugin extends Plugin
 	   if (gameStateChanged.getGameState() == GameState.LOGIN_SCREEN || gameStateChanged.getGameState() == GameState.HOPPING)
 	   {
 		   hwidSpoofCheck.loginStarted();
+	   }
+	   if (gameStateChanged.getGameState() == GameState.LOGIN_SCREEN)
+	   {
+		   membershipRecorder.reset();
 	   }
 	   if (gameStateChanged.getGameState() == GameState.HOPPING || gameStateChanged.getGameState() == GameState.LOGIN_SCREEN || gameStateChanged.getGameState() == GameState.CONNECTION_LOST)
 	   {
@@ -755,6 +770,8 @@ public class MicrobotPlugin extends Plugin
 		{
 			scriptErrorReporter.rememberPlayerName(localPlayer.getName());
 		}
+
+		membershipRecorder.onGameTick(Microbot.getClient(), configManager, executor);
 	}
 
 	@Subscribe(priority = 100)
