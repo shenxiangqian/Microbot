@@ -1633,7 +1633,7 @@ final class Rs2WalkerDoors {
      * through. Whatever answers dialogue (the questing layer) then never sees a menu that survives
      * long enough to act on, so the walk livelocks at the door.
      *
-     * <p>Deferring is BOUNDED: if nothing answers within {@link #DOOR_DIALOGUE_DEFER_MAX_MS} the
+     * <p>Deferring is BOUNDED: if nothing answers within  the
      * walker resumes clicking, so a stray conversation with no handler cannot stall a plain walk
      * that has no dialogue logic behind it.
      */
@@ -1837,7 +1837,7 @@ final class Rs2WalkerDoors {
 
     /**
      * True when some catalog origin one step from {@code from} has a same-plane adjacent transport to {@code to}.
-     * Restricted to {@link #isAdjacentSamePlaneTransport} rows so long-distance transports do not suppress doors.
+     * Restricted to rows so long-distance transports do not suppress doors.
      */
     static boolean matchesAdjacentOriginShortTransportHop(WorldPoint from, WorldPoint to) {
         if (from == null || to == null || from.getPlane() != to.getPlane()) {
@@ -2129,8 +2129,10 @@ final class Rs2WalkerDoors {
                 return new DoorSceneSnapshot(Collections.emptyList(), Collections.emptyList());
             }
             return new DoorSceneSnapshot(
-                    Rs2GameObject.getWallObjects(o -> true, playerLoc, radiusTiles),
-                    Rs2GameObject.getGameObjects(o -> true, playerLoc, radiusTiles));
+                    //Rs2GameObject.getWallObjects(o -> true, playerLoc, radiusTiles),
+                    //Rs2GameObject.getGameObjects(o -> true, playerLoc, radiusTiles));
+                    Rs2WalkerSceneObjects.near(WallObject.class, playerLoc, radiusTiles),
+                    Rs2WalkerSceneObjects.near(GameObject.class, playerLoc, radiusTiles));
         }
     }
 

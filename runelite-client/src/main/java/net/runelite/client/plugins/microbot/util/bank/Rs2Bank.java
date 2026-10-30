@@ -1298,11 +1298,12 @@ public class Rs2Bank {
 
         invokeMenu(xPromptOffset, rs2Item);
         boolean foundEnterAmount = sleepUntil(() -> {
-            Widget widget = Rs2Widget.getWidget(InterfaceID.Chatbox.MES_TEXT);
-            return widget != null && widget.getText().equalsIgnoreCase("Enter amount:");
+            //Widget widget = Rs2Widget.getWidget(InterfaceID.Chatbox.MES_TEXT);
+            //return widget != null && !widget.isHidden() && widget.getText().equalsIgnoreCase("Enter amount:");
+            return Rs2Widget.isWidgetVisible(162,44);
         }, 5000);
         if (!foundEnterAmount) return false;
-        Rs2Random.waitEx(1200, 100);
+        //Rs2Random.waitEx(1200, 100);
         Rs2Keyboard.typeString(String.valueOf(amount));
         Rs2Keyboard.enter();
         pendingRequestedQuantity = amount;

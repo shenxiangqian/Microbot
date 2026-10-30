@@ -10,6 +10,7 @@ import net.runelite.api.coords.WorldPoint;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.api.player.models.Rs2PlayerModel;
 import net.runelite.client.plugins.microbot.util.antiban.Rs2AntibanSettings;
+import net.runelite.client.plugins.microbot.util.coords.Rs2WorldArea;
 import net.runelite.client.plugins.microbot.util.math.Rs2Random;
 import net.runelite.client.plugins.microbot.util.player.Rs2Player;
 import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
@@ -484,7 +485,6 @@ public class Rs2TileObjectModel implements TileObject, IEntity {
                     Microbot.cantReachTargetRetries);
             return false;
         }
-        WorldPoint objectLocation = getRuneLiteWorldLocation();
         if (objectLocation == null) {
             return false;
         }
