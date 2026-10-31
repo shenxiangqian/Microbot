@@ -75,6 +75,7 @@ import net.runelite.client.plugins.microbot.util.walker.segment.SegmentGate;
 import net.runelite.client.plugins.microbot.util.walker.recovery.TailDecision;
 import net.runelite.client.plugins.microbot.util.walker.state.WalkExit;
 import net.runelite.client.plugins.microbot.util.walker.state.WalkerRouteState;
+import net.runelite.client.plugins.microbot.util.walker.state.WalkStepSession;
 import net.runelite.client.plugins.microbot.util.walker.door.Rs2DoorHandler;
 import net.runelite.client.plugins.microbot.util.walker.door.Rs2WalkerAwaits;
 import net.runelite.client.plugins.microbot.util.walker.door.model.AwaitTicket;
@@ -503,6 +504,13 @@ public class Rs2Walker {
 
     /** Bounds tail recursion that was previously unbounded {@code processWalk} self-calls. */
     private static final int MAX_PROCESS_WALK_TAIL_ITERATIONS = 64;
+    /**
+     * 分步寻路（{@link #walkStepFull(WorldPoint, int)}）的当前会话。
+     *
+     * <p>整个寻路只有一份会话状态，因此同一时刻只能有一段分步寻路在进行；会话的读写都在
+     * {@code walkerLock} 保护下进行。</p>
+     */
+    private static WalkStepSession walkStepSession = null;
 
     /**
      * Verbose walker traces — enable DEBUG logging for {@code net.runelite.client.plugins.microbot}.
@@ -1464,6 +1472,25 @@ public class Rs2Walker {
             log.warn("Please do not call the walker from the main thread");
             return WalkerState.EXIT;
         }
+        WalkerState prepared = prepareWalk(target, distance);
+        if (prepared != null) {
+            return prepared;
+        }
+        return processWalk(target, distance);
+    }
+
+    /**
+     * 「进入前准备」：到达判定、{@code setTarget}、{@code routeState} 复位、关闭世界地图/银行、
+     * 标记寻路会话开始。
+     *
+     * <p>阻塞版 {@link #walkWithStateInternal} 与分步版 {@link #walkStepFull(WorldPoint, int)} 共用这一段准备逻辑。
+     * 分步版只在会话的第一趟执行一次——每趟都重做 {@code setTarget} 会把寻路器反复重置，
+     * 路径永远算不完。</p>
+     *
+     * @return {@code null} 表示准备完成，可以进入 {@link #processWalk(WorldPoint, int)}；
+     *         否则返回本次准备阶段得出的状态（{@link WalkerState#ARRIVED} 等）。
+     */
+    private static WalkerState prepareWalk(WorldPoint target, int distance) {
         // BEFORE any planning. The first version withdrew these inside markWalkSessionStart, which
         // runs after setTarget has already kicked the pathfinder off — measured live at the Tithe
         // door: the retry's plan ran against the previous walk's blocks (SEARCH_EXHAUSTED against a
@@ -1536,7 +1563,7 @@ public class Rs2Walker {
             Rs2Bank.closeBank();
         }
         markWalkSessionStart(target);
-        return processWalk(target, distance);
+        return null;
     }
 
     static void withdrawPreviousWalkScopedBlocks(int walkerLockHoldCount) {
@@ -1640,6 +1667,140 @@ public class Rs2Walker {
         boolean allowDirectionalFallback = playerLoc.distanceTo(target) <= walkStepReach;
         clickMiniMapOrFallback(rawPath, target, playerLoc, walkStepReach - 1, allowDirectionalFallback, -1);
         return WalkerState.MOVING;
+    }
+    /**
+     * 分步寻路：执行一步后立即返回，效果等同阻塞版 {@link #walkTo(WorldPoint, int)}（含门、楼梯、
+     * 传送、魔法、弹窗、停滞恢复的完整流水线）。
+     *
+     * <p>与 {@link #walkStep(WorldPoint, int)} 的区别：{@code walkStep} 只做一次小地图点击，
+     * <b>不</b>走传送/门/停滞恢复流水线，路线需要传送或开门时它走不通；本方法走的是与阻塞版
+     * 完全相同的流水线，区别只在于「一趟做完就交还控制权」。</p>
+     *
+     * <p>调用方循环调用，直到返回 {@link WalkerState#ARRIVED} / {@link WalkerState#UNREACHABLE} /
+     * {@link WalkerState#EXIT}；两步之间可以插入自己的逻辑（检查 NPC、对话、打断点等）：</p>
+     *
+     * <pre>
+     * WalkerState state;
+     * do {
+     *     state = Rs2Walker.walkStepFull(target, 1);
+     * } while (state == WalkerState.MOVING);
+     * </pre>
+     *
+     * <p>会话规则：目标或距离变化即重开一段寻路；到达终态后再次调用同一目标会直接返回该终态，
+     * 用 {@link #resetWalkStep()} 可以强制重开。</p>
+     *
+     * @param target 目标格，不可为 null
+     * @param distance 到达判定半径
+     * @return {@link WalkerState#MOVING} 表示还在走；其余为终态。
+     */
+    public static WalkerState walkStepFull(WorldPoint target, int distance) {
+        if (config == null) {
+            log.warn("[Walker] walkStepFull rejected: null config");
+            return WalkerState.EXIT;
+        }
+        if (target == null) {
+            log.warn("[Walker] walkStepFull rejected: null target");
+            return WalkerState.EXIT;
+        }
+        if (isClientThread()) {
+            log.warn("Please do not call the walker from the main thread");
+            return WalkerState.EXIT;
+        }
+        if (InputArbiter.isHuman()) {
+            log.warn("[Walker] walkStepFull rejected: is human");
+            return WalkerState.EXIT;
+        }
+
+        boolean locked = walkerLock.tryLock();
+        if (!locked) {
+            try {
+                walkerLock.lockInterruptibly();
+                locked = true;
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                return WalkerState.EXIT;
+            }
+        }
+        try {
+            WalkStepSession session = walkStepSession;
+            if (session == null || !target.equals(session.requestedTarget) || distance != session.distance) {
+                // 目标或距离变了：重开一段寻路。
+                // 终态复述必须放在这个判断之后——上一次会话的 ARRIVED 只对上一次的目标成立，
+                // 换一个目的地还直接返回它，会让调用方永远走不到新地方（只有重启客户端才恢复）。
+                session = new WalkStepSession(target, distance, 0);
+                session.stepMode = true;
+                walkStepSession = session;
+            } else if (session.finished) {
+                // 同一目标：终态已经成立就直接复述；但如果玩家已经走远了（超出到达半径），
+                // 那个终态不再成立，重开一段寻路，否则会一直报上一次的 ARRIVED。
+                if (!isWalkStepStillArrived(target, distance)) {
+                    session = new WalkStepSession(target, distance, 0);
+                    session.stepMode = true;
+                    walkStepSession = session;
+                } else {
+                    return session.finalState;
+                }
+            }
+            if (!session.prepared) {
+                currentWalkDistance = Math.max(0, distance);
+                WalkerState basement = prepareBasementEntry(target);
+                if (basement != null) {
+                    return basement;
+                }
+                WalkerState prepared = prepareWalk(target, distance);
+                if (prepared != null) {
+                    if (prepared == WalkerState.ARRIVED || prepared == WalkerState.UNREACHABLE
+                            || prepared == WalkerState.EXIT) {
+                        session.finished = true;
+                        session.finalState = prepared;
+                    }
+                    return prepared;
+                }
+                session.prepared = true;
+            }
+            if (session.processWalkTail >= MAX_PROCESS_WALK_TAIL_ITERATIONS) {
+                session.finished = true;
+                session.finalState = tailBudgetExceeded(session.target);
+                return session.finalState;
+            }
+            WalkerState passResult = processWalkPass(session);
+            if (passResult == null) {
+                session.processWalkTail++;
+                return WalkerState.MOVING;
+            }
+            if (passResult == WalkerState.MOVING) {
+                // 分步模式：MOVING 不是终态，这一趟没走成，会话继续。
+                session.processWalkTail++;
+                return WalkerState.MOVING;
+            }
+            session.finished = true;
+            session.finalState = passResult;
+            return passResult;
+        } finally {
+            walkerLock.unlock();
+            Rs2WalkerMovement.restoreMinimapZoom();
+        }
+    }
+
+    /**
+     * 丢弃当前分步寻路会话：下一次 {@link #walkStepFull(WorldPoint, int)} 会重开一段新的寻路。
+     *
+     * <p>会话走到终态后无需调用本方法（同一目标会直接复述终态）；只有想用同一个目标重新走一遍
+     * 时才需要它。</p>
+     */
+    public static void resetWalkStep() {
+        walkStepSession = null;
+    }
+
+    /**
+     * 玩家是否仍然处在目标的到达半径内。
+     *
+     * <p>用于分步会话的终态复述判断：{@link WalkerState#ARRIVED} 只在玩家确实站在目标旁边时成立，
+     * 走开了之后就不能继续拿它当答案。</p>
+     */
+    private static boolean isWalkStepStillArrived(WorldPoint target, int distance) {
+        WorldPoint playerLoc = Rs2Player.getWorldLocation();
+        return playerLoc != null && playerLoc.distanceTo(target) <= distance;
     }
 
     /** Wall-clock ms of the last walker heartbeat line. */
@@ -1912,6 +2073,22 @@ public class Rs2Walker {
     }
 
     private static WalkerState processWalk(WorldPoint target, int distance) {
+        WalkerState basement = prepareBasementEntry(target);
+        if (basement != null) {
+            return basement;
+        }
+        return processWalk(target, distance, 0);
+    }
+
+    /**
+     * 地窖入口准备：解拉杆谜题，让寻路器有一条真的通往地窖房间的路线。
+     *
+     * <p>阻塞版 {@code processWalk} 与分步版 {@link #walkStepFull(WorldPoint, int)} 共用这一段。
+     * 解谜本身是阻塞的（它内部会自己走路），分步模式下发生在会话的第一趟。</p>
+     *
+     * @return {@code null} 表示可以继续寻路；否则返回本次准备阶段得出的状态。
+     */
+    private static WalkerState prepareBasementEntry(WorldPoint target) {
         // Stage entry and solve the Draynor basement lever puzzle before pathfinding to a basement
         // room. This avoids accepting a closer partial route into an unrelated underground map.
         // The solver's internal walkTo calls clear currentTarget, so restore it before the real walk.
@@ -1931,7 +2108,7 @@ public class Rs2Walker {
             }
             setTarget(target, "rs2walker:basement-solve-restore");
         }
-        return processWalk(target, distance, 0);
+        return null;
     }
 
     private static WalkerState settleReachedPathEndpoint(WorldPoint target, WorldPoint endpoint, WorldPoint playerLoc,
@@ -1948,6 +2125,7 @@ public class Rs2Walker {
     }
 
     private static WalkerState processWalk(WorldPoint target, int distance, int partialRetries) {
+
         if (debug) {
             return WalkerState.EXIT;
         }
@@ -1964,39 +2142,90 @@ public class Rs2Walker {
             setTarget(null, "rs2walker:processWalk:target-not-walkable");
             return WalkerState.UNREACHABLE;
         }
-        int partialRetriesWorking = partialRetries;
-        int clientThreadTimeoutRetries = 0;
-        // 点击仍在带着玩家跑时，允许绕开寻路器缺失的阻塞等待，但只绕开有界次数。
-        int pathfinderAbsentCarryRetries = 0;
-        // When the last partial retry was spent, so route progress made after it can refill the
-        // budget. Without this the counter is monotonic for the entire walk.
-        long lastPartialRetryAtMs = 0L;
-        WorldPoint lastPartialRetryAtLoc = null;
-        int consecutiveExemptIterations = 0;
-        WorldPoint lastAttemptedMinimapClick = null;
-        boolean lastAttemptedMinimapClickOk = false;
-        long lastAttemptedMinimapClickAtMs = 0L;
-        long pathfinderPendingSinceMs = 0L;
 
-        Map<WorldPoint, Integer> reachableTilesCache = null;
-        WorldPoint reachableTilesCacheOrigin = null;
-        for (int processWalkTail = 0; processWalkTail < MAX_PROCESS_WALK_TAIL_ITERATIONS; processWalkTail++) {
+        WalkStepSession session = new WalkStepSession(target, distance, partialRetries);
+        return driveWalkPasses(session);
+    }
+
+    /**
+     * 驱动尾循环：一趟一趟地执行 {@link #processWalkPass(WalkStepSession)}。
+     *
+     * <p>阻塞版语义与改造前逐字对应：每一趟跑完，尾循环计数加一；途中的豁免迭代会用
+     * {@code session.processWalkTail--} 抵消这一次计数，因此预算消耗与原来一致。</p>
+     *
+     * <p>分步模式的差别只有一处：{@link WalkerState#MOVING} 在阻塞版里表示「本次寻路提前结束」，
+     * 在分步模式里表示「这一趟没走成」，会话继续，下一趟再试。</p>
+     */
+    private static WalkerState driveWalkPasses(WalkStepSession session) {
+        while (session.processWalkTail < MAX_PROCESS_WALK_TAIL_ITERATIONS) {
+            WalkerState passResult = processWalkPass(session);
+            if (passResult != null) {
+                if (session.stepMode && passResult == WalkerState.MOVING) {
+                    // 分步模式：MOVING 不是终态，会话继续下一趟。计数照常加一，避免原地打转。
+                    session.processWalkTail++;
+                    continue;
+                }
+                return passResult;
+            }
+            session.processWalkTail++;
+        }
+        return tailBudgetExceeded(session.target);
+    }
+
+    /**
+     * 尾循环预算耗尽：阻塞版与分步版共用同一段收尾（日志 + 退出）。
+     */
+    private static WalkerState tailBudgetExceeded(WorldPoint target) {
+        Microbot.log(Level.WARN,
+                "[WalkerDiag] exceeded MAX_PROCESS_WALK_TAIL_ITERATIONS (%d) target=%s currentTarget=%s interim=%s stuck=%d player=%s — enable DEBUG for per-iteration traces",
+                MAX_PROCESS_WALK_TAIL_ITERATIONS,
+                target,
+                currentTarget,
+                routeState.interimTargetWp,
+                routeState.stuckCount,
+                Rs2Player.getWorldLocation());
+        WebWalkLog.tailExceeded(MAX_PROCESS_WALK_TAIL_ITERATIONS, target, currentTarget, routeState.interimTargetWp, routeState.stuckCount,
+                Rs2Player.getWorldLocation());
+        return WalkerState.EXIT;
+    }    /**
+     * 尾循环的一趟（pass）：观察 → 决策 → 至多执行一个动作。
+     *
+     * <p>这是阻塞版 {@code processWalk} 尾循环体的原样提取：循环体内部一行逻辑都没有改写，
+     * 只有跨迭代的 13 个局部变量换成了 {@link WalkStepSession} 上的字段。门、楼梯、传送、
+     * 魔法、弹窗、停滞恢复等全部走同一条代码路径，因此分步版与阻塞版行为等价。</p>
+     *
+     * <p>返回值语义：</p>
+     * <ul>
+     *   <li>{@code null}：本趟正常走完，调用方可以继续下一趟（尾循环体里的 {@code continue} 即表示此意）。</li>
+     *   <li>{@link WalkerState#ARRIVED} / {@link WalkerState#UNREACHABLE} / {@link WalkerState#EXIT}：终态，整段寻路结束。</li>
+     *   <li>{@link WalkerState#MOVING}：阻塞版在此结束寻路；分步版把它当作「本趟没走成」，会话仍可继续。</li>
+     * </ul>
+     *
+     * <p>单趟壳（{@code passOnce}）的作用：原尾循环体里的 {@code continue} 表示「跳到下一轮尾循环」，
+     * 提取成方法后由这个壳承接——{@code continue} 结束本趟，方法返回 {@code null} 表示可继续；
+     * 体内 4 处属于内层循环的 {@code continue} 仍作用于各自的内层循环，语义不变。</p>
+     */
+    private static WalkerState processWalkPass(WalkStepSession session) {
+        final WorldPoint target = session.target;
+        final int distance = session.distance;
+        for (int passOnce = 0; passOnce < 1; passOnce++) {
+
         observeTailCycle();
-        walkerHeartbeat(target, processWalkTail);
+        walkerHeartbeat(target, session.processWalkTail);
         try {
             walkerDiag("tail iteration begin idx=%d/%d target=%s current=%s interim=%s partialRetries=%d",
-                    processWalkTail,
+                    session.processWalkTail,
                     MAX_PROCESS_WALK_TAIL_ITERATIONS,
                     target,
                     currentTarget,
                     routeState.interimTargetWp,
-                    partialRetriesWorking);
+                    session.partialRetriesWorking);
             if (isStableLoggedOut()) {
-                traceProcessWalkExit("not-logged-in", target, processWalkTail);
+                traceProcessWalkExit("not-logged-in", target, session.processWalkTail);
                 setTarget(null, "rs2walker:processWalk:not-logged-in");
                 return WalkerState.EXIT;
             }
-            if (walkCancelledDiag(target, "processWalk:entry", processWalkTail)) {
+            if (walkCancelledDiag(target, "processWalk:entry", session.processWalkTail)) {
                 return WalkerState.EXIT;
             }
 
@@ -2004,10 +2233,10 @@ public class Rs2Walker {
             if (!routeStatus.isPresent()) {
                 // 点击仍带着玩家跑时，寻路器缺失是后台的事：短轮询几次就够，没理由在这里阻塞
                 // 最多 PATHFINDER_NULL_WAIT_MS。整段阻塞期间一格都点不出去，玩家必然停住。
-                if (pathfinderAbsentCarryRetries < PATHFINDER_ABSENT_CARRY_RETRIES
+                if (session.pathfinderAbsentCarryRetries < PATHFINDER_ABSENT_CARRY_RETRIES
                         && isMinimapClickCarryingPlayer()) {
-                    pathfinderAbsentCarryRetries++;
-                    processWalkTail--;
+                    session.pathfinderAbsentCarryRetries++;
+                    session.processWalkTail--;
                     sleep(Rs2Random.between(PATHFINDER_DONE_RETRY_SLEEP_MIN_MS, PATHFINDER_DONE_RETRY_SLEEP_MAX_MS));
                     continue;
                 }
@@ -2018,7 +2247,7 @@ public class Rs2Walker {
                         100,
                         PATHFINDER_NULL_WAIT_MS);
                 routeStatus = Rs2PathApi.getActiveRouteStatus();
-                if (walkCancelledDiag(target, "processWalk:after-wait-pathfinder", processWalkTail)) {
+                if (walkCancelledDiag(target, "processWalk:after-wait-pathfinder", session.processWalkTail)) {
                     return WalkerState.EXIT;
                 }
                 if (!routeStatus.isPresent()) {
@@ -2027,7 +2256,7 @@ public class Rs2Walker {
                         recalculatePath();
                         continue;
                     }
-                    traceProcessWalkExit("pathfinder-still-null", target, processWalkTail);
+                    traceProcessWalkExit("pathfinder-still-null", target, session.processWalkTail);
                     setTarget(null, "rs2walker:processWalk:pathfinder-still-null");
                     return WalkerState.EXIT;
                 }
@@ -2044,8 +2273,8 @@ public class Rs2Walker {
                 } else {
                     long observedGeneration = routeStatus.getGeneration();
                     markStartupPhase("pf_wait_retry", target, "slice=" + PATHFINDER_DONE_POLL_WAIT_MS);
-                    if (pathfinderPendingSinceMs == 0L) {
-                        pathfinderPendingSinceMs = System.currentTimeMillis();
+                    if (session.pathfinderPendingSinceMs == 0L) {
+                        session.pathfinderPendingSinceMs = System.currentTimeMillis();
                     }
                     walkerDiag("pathfinder not done; short-poll max %dms", PATHFINDER_DONE_POLL_WAIT_MS);
                     Rs2WalkerRuntimeAwaits.awaitCondition(() -> {
@@ -2055,25 +2284,25 @@ public class Rs2Walker {
                                 || current.isReady();
                     }, 100, PATHFINDER_DONE_POLL_WAIT_MS);
                     routeStatus = Rs2PathApi.getActiveRouteStatus();
-                    if (walkCancelledDiag(target, "processWalk:after-wait-done", processWalkTail)) {
+                    if (walkCancelledDiag(target, "processWalk:after-wait-done", session.processWalkTail)) {
                         return WalkerState.EXIT;
                     }
                     if (!routeStatus.isReady()) {
-                        if (System.currentTimeMillis() - pathfinderPendingSinceMs > 10_000L) {
-                            traceProcessWalkExit("pathfinder-timeout-not-done", target, processWalkTail);
+                        if (System.currentTimeMillis() - session.pathfinderPendingSinceMs > 10_000L) {
+                            traceProcessWalkExit("pathfinder-timeout-not-done", target, session.processWalkTail);
                             setTarget(null, "rs2walker:processWalk:pathfinder-timeout-not-done");
                             return WalkerState.EXIT;
                         }
                         // Non-blocking startup: keep polling in short slices so first click can happen
                         // as soon as pathfinder finishes, instead of one long 10s stall.
-                        processWalkTail--;
+                        session.processWalkTail--;
                         sleep(Rs2Random.between(PATHFINDER_DONE_RETRY_SLEEP_MIN_MS, PATHFINDER_DONE_RETRY_SLEEP_MAX_MS));
                         continue;
                     }
                     markStartupPhase("pf_ready", target, "source=pathfinder_done");
                 }
             }
-            pathfinderPendingSinceMs = 0L;
+            session.pathfinderPendingSinceMs = 0L;
 			captureActiveRouteComparisonEligibility(routeStatus.getGeneration());
 
 			if (consumeRecoveryReplanForTest())
@@ -2104,7 +2333,15 @@ public class Rs2Walker {
             boolean partialPath = false;
             if (dst == null || dst.distanceTo(target) > distance) {
                 final WorldPoint sealedRim = consumeSealedRimRetarget(target, dst);
-                if (sealedRim != null) { return processWalk(sealedRim, distance, partialRetries); }
+                if (sealedRim != null) {
+                    if (session.stepMode) {
+                        // 分步模式：改道等于「另起一段寻路」，本趟到此结束，下一趟以新目标继续。
+                        // 阻塞模式沿用原来的递归（另起一段完整寻路）。
+                        session.restartFor(sealedRim);
+                        return null;
+                    }
+                    return processWalk(sealedRim, distance, session.partialRetriesInitial);
+                }
                 if (path != null && path.size() > 1) {
                     WebWalkLog.partialSegment(dst, dst.distanceTo(target), target, path.size());
                     partialPath = true;
@@ -2158,12 +2395,12 @@ public class Rs2Walker {
             // Partial paths end at an intermediate waypoint (dst still far from {@code target});
             // clearing here would drop currentTarget before the partial-path retry/recalc branch.
             if (!partialPath && isNear(dst, walkLoop.playerLoc) && routeState.interimTargetWp == null) {
-                return settleReachedPathEndpoint(target, dst, walkLoop.playerLoc, distance, processWalkTail);
+                return settleReachedPathEndpoint(target, dst, walkLoop.playerLoc, distance, session.processWalkTail);
             }
 
             boolean shouldIssueActiveRouteIdleNudge = shouldIssueActiveRouteIdleNudge();
             checkIfStuck();
-            if (walkCancelledDiag(target, "processWalk:after-stuck-check", processWalkTail)) {
+            if (walkCancelledDiag(target, "processWalk:after-stuck-check", session.processWalkTail)) {
                 return WalkerState.EXIT;
             }
             if (isStuckTooLong() && !hasFreshActiveDoorClaim(System.currentTimeMillis())) {
@@ -2179,11 +2416,11 @@ public class Rs2Walker {
                 Telemetry.recordStallRecalc(sinceMoved, walkLoop.playerLoc);
                 WebWalkLog.stallRecalc(sinceMoved, threshold,
                         Rs2Player.isInCombat(), walkLoop.animating, walkLoop.interacting);
-                if (lastAttemptedMinimapClick != null) {
+                if (session.lastAttemptedMinimapClick != null) {
                     WebWalkLog.stallContextDebug(
-                            lastAttemptedMinimapClick,
-                            lastAttemptedMinimapClickOk,
-                            Math.max(0L, System.currentTimeMillis() - lastAttemptedMinimapClickAtMs),
+                            session.lastAttemptedMinimapClick,
+                            session.lastAttemptedMinimapClickOk,
+                            Math.max(0L, System.currentTimeMillis() - session.lastAttemptedMinimapClickAtMs),
                             routeState.interimTargetWp);
                 }
                 routeState.lastMovedTimeMs = System.currentTimeMillis();
@@ -2202,9 +2439,9 @@ public class Rs2Walker {
             }
             if (shouldRunActiveRouteIdleNudge(shouldIssueActiveRouteIdleNudge, immediateRouteTransportPending)) {
                 if (tryIssueRouteRecoveryClick(rawPath, path, target, distance, "active route idle nudge")) {
-                    lastAttemptedMinimapClick = null;
-                    lastAttemptedMinimapClickOk = false;
-                    lastAttemptedMinimapClickAtMs = 0L;
+                    session.lastAttemptedMinimapClick = null;
+                    session.lastAttemptedMinimapClickOk = false;
+                    session.lastAttemptedMinimapClickAtMs = 0L;
                     continue;
                 }
                 routeState.lastActiveRouteIdleNudgeAtMs = System.currentTimeMillis();
@@ -2237,7 +2474,7 @@ public class Rs2Walker {
                 walkerDiag("getClosestTileIndex=-1 pathSize=%d player=%s pathFirst=%s pathLast=%s", path.size(),
                         playerLocForIndex, path.isEmpty() ? null : path.get(0),
                         path.isEmpty() ? null : path.get(path.size() - 1));
-                traceProcessWalkExit("closest-index-none", target, processWalkTail);
+                traceProcessWalkExit("closest-index-none", target, session.processWalkTail);
                 setTarget(null, "rs2walker:processWalk:closest-index-none");
                 return WalkerState.EXIT;
             }
@@ -2277,13 +2514,13 @@ public class Rs2Walker {
                     && !isDoorInteractionSettling()
                     && !isTransportInteractionSettling()
                     && tryIssueRouteContinuationClick(rawPath, path, target, distance)) {
-                walkerDiag("tail exempt exitReason=interim-close-route-click tailBefore=%d", processWalkTail);
-                processWalkTail--;
+                walkerDiag("tail exempt exitReason=interim-close-route-click tailBefore=%d", session.processWalkTail);
+                session.processWalkTail--;
                 continue;
             }
             FirstRouteInteractionResult firstInteractionAtRange = checkFirstRouteInteractionAtRange(
                     rawPath, indexOfStartPoint, smoothedToRaw, walkLoop, clearedInterimTarget);
-            if (firstInteractionAtRange == FirstRouteInteractionResult.HANDLED) { processWalkTail--; continue; }
+            if (firstInteractionAtRange == FirstRouteInteractionResult.HANDLED) { session.processWalkTail--; continue; }
 
             manageRunEnergy(path.size());
 
@@ -2330,7 +2567,7 @@ public class Rs2Walker {
                         indexOfStartPoint,
                         path.size());
                 walkerDiag("tail exempt exitReason=%s tailBefore=%d early=true interim=%s",
-                        exit.wireName(offPathDeferDetail), processWalkTail, routeState.interimTargetWp);
+                        exit.wireName(offPathDeferDetail), session.processWalkTail, routeState.interimTargetWp);
                 // 终点持有：玩家正跑向终点，等到停下或目标被清除再进入下一轮，避免空转。
                 if (holdTerminalApproachNow(System.currentTimeMillis())) {
                     sleepUntilWalk(() -> isWalkCancelled(target)
@@ -2338,7 +2575,7 @@ public class Rs2Walker {
                                     || !holdTerminalApproachNow(System.currentTimeMillis()),
                             INTERIM_MOVING_POLL_MS);
                 }
-                processWalkTail--;
+                session.processWalkTail--;
                 continue;
             }
 
@@ -2418,8 +2655,8 @@ public class Rs2Walker {
             WorldPoint currentPlayerLoc = walkLoop.playerLoc;
             // 半径 39 的可达性 BFS 很贵（每个 pass 都要在客户端线程上跑一遍），而行走过程中
             // 每 200ms 就有一个 pass。走短期缓存（起点格 + 半径，600ms），玩家站在同一格时不必重算。
-            reachableTilesCache = Rs2WalkerMovement.ReachabilityCache.get(currentPlayerLoc, HANDLER_RANGE * 3);
-            reachableTilesCacheOrigin = currentPlayerLoc;
+            session.reachableTilesCache = Rs2WalkerMovement.ReachabilityCache.get(currentPlayerLoc, HANDLER_RANGE * 3);
+            session.reachableTilesCacheOrigin = currentPlayerLoc;
             final int currentPlayerPlane = currentPlayerLoc != null ? currentPlayerLoc.getPlane() : -1;
 
             // Route order for interact-at-range: the loop walks segments outward from the player, so
@@ -2437,7 +2674,7 @@ public class Rs2Walker {
                 if (currentWorldPoint.getPlane() != currentPlayerPlane) {
                     continue;
                 }
-                if (walkCancelledDiag(target, "processWalk:path-loop", processWalkTail)) {
+                if (walkCancelledDiag(target, "processWalk:path-loop", session.processWalkTail)) {
                     return WalkerState.EXIT;
                 }
 
@@ -2469,7 +2706,7 @@ public class Rs2Walker {
                     // Avoid mid-walk recalculation while recent clicks, route progress, or busy state
                     // indicate the player may still be advancing. isStuckTooLong() will trigger a
                     // real recovery path once progress actually halts.
-                    String deferReason = currentOffPathRecalcDeferralReason(lastAttemptedMinimapClickAtMs);
+                    String deferReason = currentOffPathRecalcDeferralReason(session.lastAttemptedMinimapClickAtMs);
                     if (deferReason != null) {
                         Telemetry.recordOffPathRecalcDeferred(deferReason, playerForPathCheck, target, path.size());
                         if (routeState.lastTransportHandledAtMs > 0
@@ -2520,7 +2757,7 @@ public class Rs2Walker {
                     SegmentGate.SegmentAction segmentAction = SegmentGate.decide(
                             recentTransportWindow, transportContext.upcomingNearby, recentDoorAttemptNearSegment,
                             isDoorInteractionSettling(), isRecoveryMovementInFlight(),
-                            reachableTilesCache.containsKey(currentWorldPoint),
+                            session.reachableTilesCache.containsKey(currentWorldPoint),
                             currentWalkerPhase() == WalkerPhase.STARTUP, transportContext.startupStep, i, indexOfStartPoint);
                     if (segmentAction.isSkip()) {
                         segmentSkippedThisPass = true;
@@ -2564,7 +2801,7 @@ public class Rs2Walker {
                             && doorMovementGateOk && !isDoorInteractionSettling() && !isRecoveryMovementInFlight()) {
                         doorOrTransportResult = handleDoorsInRawSegment(rawPath, rawI, rawEnd,
                                 obstaclePolicy.segmentDoorTimeoutMs(),
-                                reachableTilesCache);
+                                session.reachableTilesCache);
                     }
                     if (doorOrTransportResult) {
                         tmarkPostTransport("post_transport_segment_handler", target,
@@ -2593,7 +2830,7 @@ public class Rs2Walker {
                         // P2 unified rockfall dispatch (shared with recovery). INTERACTED (mined) breaks the
                         // segment loop; ABORT (no pickaxe) clears the target and falls through, exactly as the
                         // former applyRockfall(handleRockfallInRawSegment(...)) did.
-                        ObstacleResolution rockfall = resolveRockfallOnSegment(rawPath, rawI, rawEnd, reachableTilesCache);
+                        ObstacleResolution rockfall = resolveRockfallOnSegment(rawPath, rawI, rawEnd, session.reachableTilesCache);
                         doorOrTransportResult = rockfall.kind() == ObstacleResolution.Kind.INTERACTED;
                         if (rockfall.kind() == ObstacleResolution.Kind.ABORT) {
                             setTarget(null, "rs2walker:" + rockfall.reason());
@@ -2627,7 +2864,7 @@ public class Rs2Walker {
                     }
                 }
 
-                boolean tileReachable = reachableTilesCache.containsKey(currentWorldPoint);
+                boolean tileReachable = session.reachableTilesCache.containsKey(currentWorldPoint);
                 // The handlers above block for seconds, so re-capture the snapshot — but ONLY for
                 // tiles the recovery gate below can consume (far hops were the pre-obstacle stall).
                 if (!tileReachable && !inInstance) {
@@ -2637,10 +2874,10 @@ public class Rs2Walker {
                     }
                     walkLoop = WalkLoopSnapshot.capture();
                     WorldPoint playerLoc = walkLoop.playerLoc;
-                    if (playerLoc != null && !playerLoc.equals(reachableTilesCacheOrigin)) {
-                        reachableTilesCache = Rs2WalkerMovement.ReachabilityCache.get(playerLoc, HANDLER_RANGE * 3);
-                        reachableTilesCacheOrigin = playerLoc;
-                        tileReachable = reachableTilesCache.containsKey(currentWorldPoint);
+                    if (playerLoc != null && !playerLoc.equals(session.reachableTilesCacheOrigin)) {
+                        session.reachableTilesCache = Rs2WalkerMovement.ReachabilityCache.get(playerLoc, HANDLER_RANGE * 3);
+                        session.reachableTilesCacheOrigin = playerLoc;
+                        tileReachable = session.reachableTilesCache.containsKey(currentWorldPoint);
                         WebWalkLog.spDebug("reachable_recapture | from={} tile={} reachableNow={}", compactWorldPoint(playerLoc), compactWorldPoint(currentWorldPoint), tileReachable);
                     }
                 }
@@ -2678,7 +2915,7 @@ public class Rs2Walker {
                             // door (or other obstacle) really is. Every recovery path below exits the loop,
                             // so rebinding i/currentWorldPoint here is contained.
                             int rewoundIdx = FrontierDecision.earliestBlockedIndex(
-                                    path, recoveryScanStart, i, currentPlayerPlane, reachableTilesCache);
+                                    path, recoveryScanStart, i, currentPlayerPlane, session.reachableTilesCache);
                             if (rewoundIdx != FrontierDecision.NO_EARLIER_BLOCKED_INDEX) {
                                 log.info("[Walker] frontier rewind: earliest blocked route tile idx={} tile={} (miss was idx={})",
                                         rewoundIdx, path.get(rewoundIdx), i);
@@ -2702,7 +2939,7 @@ public class Rs2Walker {
                             // through; a transport approach is applied as the recovery target further down. The
                             // scan is MLM-/proximity-gated inside the resolver, so it is a no-op elsewhere.
                             ObstacleResolution frontierObstacle = resolveRecoveryObstacle(rawPath, rawEdgeStart,
-                                    rawEdgeEnd, playerLoc, STALL_RECOVERY_MINIMAP_REACH_EUCLIDEAN, reachableTilesCache,
+                                    rawEdgeEnd, playerLoc, STALL_RECOVERY_MINIMAP_REACH_EUCLIDEAN, session.reachableTilesCache,
                                     inInstance);
                             if (frontierObstacle.kind() == ObstacleResolution.Kind.INTERACTED) {
                                 // A rockfall was mined or an on-origin transport/shortcut was taken.
@@ -2757,13 +2994,13 @@ public class Rs2Walker {
                                 break;
                             }
                             if (handleFirstRecoveryDoor(rawPath, obstaclePolicy.unreachableDoorTimeoutMs(),
-                                    playerLoc, reachableTilesCache)) {
+                                    playerLoc, session.reachableTilesCache)) {
                                 exit = WalkExit.DOOR_HANDLED_LOCAL_REACHABILITY_RAW_SCAN;
                                 break;
                             }
                             if (handleDoorsInRawSegment(rawPath, rawEdgeStart, rawEdgeEnd,
                                     obstaclePolicy.unreachableDoorTimeoutMs(),
-                                    reachableTilesCache)) {
+                                    session.reachableTilesCache)) {
                                 exit = WalkExit.DOOR_HANDLED_LOCAL_REACHABILITY;
                                 break;
                             }
@@ -2830,11 +3067,11 @@ public class Rs2Walker {
                                 // standing at the door when the cooldown expires and the handlers engage.
                                 routeState.doorRecoverySuppressedAtMs = System.currentTimeMillis();
                                 WorldPoint doorApproach = null;
-                                if (rawPath != null && !rawPath.isEmpty() && reachableTilesCache != null) {
+                                if (rawPath != null && !rawPath.isEmpty() && session.reachableTilesCache != null) {
                                     int hi = Math.min(rawEdgeEnd, rawPath.size()) - 1;
                                     for (int ri = hi; ri >= Math.max(0, rawEdgeStart); ri--) {
                                         WorldPoint rt = rawPath.get(ri);
-                                        if (rt != null && reachableTilesCache.containsKey(rt)
+                                        if (rt != null && session.reachableTilesCache.containsKey(rt)
                                                 && !rt.equals(playerLoc) && playerLoc.distanceTo2D(rt) > 1) {
                                             doorApproach = rt;
                                             break;
@@ -2946,8 +3183,8 @@ public class Rs2Walker {
                                     recoverTarget, playerLoc,
                                     isDoorInteractionSettling(),
                                     Rs2Player.isMoving()
-                                            && isMovementWalkerOwned(System.currentTimeMillis(), lastAttemptedMinimapClickAtMs),
-                                    reachableTilesCache != null ? reachableTilesCache.keySet() : null,
+                                            && isMovementWalkerOwned(System.currentTimeMillis(), session.lastAttemptedMinimapClickAtMs),
+                                    session.reachableTilesCache != null ? session.reachableTilesCache.keySet() : null,
                                     WALLED_RECOVERY_TARGET_EUCLIDEAN,
                                     System.currentTimeMillis(), routeState.lastWalledRecoveryReplanAtMs,
                                     WALLED_RECOVERY_REPLAN_COOLDOWN_MS);
@@ -3239,7 +3476,7 @@ public class Rs2Walker {
                     }
                     if (!inInstance && handlePendingDoorBeforeRouteClick(rawPath, path, i, targetIdx,
                             smoothedToRaw, obstaclePolicy.segmentDoorTimeoutMs(),
-                            playerLoc, reachableTilesCache)) {
+                            playerLoc, session.reachableTilesCache)) {
                         doorOrTransportResult = true;
                         exit = WalkExit.DOOR_HANDLED_BEFORE_MINIMAP_CLICK;
                         break;
@@ -3266,12 +3503,12 @@ public class Rs2Walker {
                     WorldPoint clickedTarget = clickMiniMapOrFallback(rawPath, clickTarget, playerLoc,
                             MINIMAP_REACH_EUCLIDEAN - 1, rawPath == null || rawPath.isEmpty(), rawAnchorIndex);
                     boolean clicked = clickedTarget != null;
-                    if (walkCancelledDiag(target, "processWalk:after-minimap-click", processWalkTail)) {
+                    if (walkCancelledDiag(target, "processWalk:after-minimap-click", session.processWalkTail)) {
                         return WalkerState.EXIT;
                     }
-                    lastAttemptedMinimapClick = clicked ? clickedTarget : clickTarget;
-                    lastAttemptedMinimapClickOk = clicked;
-                    lastAttemptedMinimapClickAtMs = nowMs;
+                    session.lastAttemptedMinimapClick = clicked ? clickedTarget : clickTarget;
+                    session.lastAttemptedMinimapClickOk = clicked;
+                    session.lastAttemptedMinimapClickAtMs = nowMs;
                     if (clicked) {
                         markFirstMovementClick("first_route_click", target, posBefore,
                                 "to=" + compactWorldPoint(clickedTarget));
@@ -3317,7 +3554,7 @@ public class Rs2Walker {
                             return proximityWaitSatisfied(now, b, before, proximityWake, progressCap);
                         }, WalkerClickPolicy.STATE_WAIT_MS);
                         WorldPoint afterClickWait = Rs2Player.getWorldLocation();
-                        if (walkCancelledDiag(target, "processWalk:after-click-wait", processWalkTail)) {
+                        if (walkCancelledDiag(target, "processWalk:after-click-wait", session.processWalkTail)) {
                             return WalkerState.EXIT;
                         }
 
@@ -3371,7 +3608,7 @@ public class Rs2Walker {
                         routeState.interimInitialDistanceToTarget = Integer.MAX_VALUE;
                         routeState.interimTargetRecovery = false;
                         sleepUntil(() -> isWalkCancelled(target) || !Rs2Player.isMoving(), 1200);
-                        if (walkCancelledDiag(target, "processWalk:after-click-failed-wait", processWalkTail)) {
+                        if (walkCancelledDiag(target, "processWalk:after-click-failed-wait", session.processWalkTail)) {
                             return WalkerState.EXIT;
                         }
                         break;
@@ -3438,7 +3675,7 @@ public class Rs2Walker {
             // Exiting because the player left the path may still mean movement is active.
             // so don't clobber that destination.
             if (!doorOrTransportResult && exit == WalkExit.END_OF_PATH) {
-                if (walkCancelledDiag(target, "processWalk:before-final-canvas", processWalkTail)) {
+                if (walkCancelledDiag(target, "processWalk:before-final-canvas", session.processWalkTail)) {
                     return WalkerState.EXIT;
                 }
                 if (!path.isEmpty()) {
@@ -3470,7 +3707,7 @@ public class Rs2Walker {
                         }
                         if (finalClick) {
                             waitUntilIdleAfterSceneWalk(target, POST_SCENE_WALK_IDLE_WAIT_MS_MAX, target, finishTh);
-                            if (walkCancelledDiag(target, "processWalk:after-final-canvas-wait", processWalkTail)) {
+                            if (walkCancelledDiag(target, "processWalk:after-final-canvas-wait", session.processWalkTail)) {
                                 return WalkerState.EXIT;
                             }
                         }
@@ -3493,31 +3730,31 @@ public class Rs2Walker {
                 setTarget(null, "rs2walker:processWalk:arrived-within-distance");
                 return WalkerState.ARRIVED;
             } else if (partialPath) {
-                if (walkCancelledDiag(target, "processWalk:partial-path-branch", processWalkTail)) {
+                if (walkCancelledDiag(target, "processWalk:partial-path-branch", session.processWalkTail)) {
                     return WalkerState.EXIT;
                 }
                 WorldPoint retryLoc = Rs2Player.getWorldLocation();
-                boolean movedSinceLastRetry = lastPartialRetryAtLoc == null
-                        || (retryLoc != null && !retryLoc.equals(lastPartialRetryAtLoc));
-                if (TailDecision.shouldRefillPartialRetryBudget(partialRetriesWorking, movedSinceLastRetry,
-                        routeState.routeProgressAdvancedAtMs, lastPartialRetryAtMs)) {
-                    walkerDiag("partial retry budget refilled progressAt=%d lastRetryAt=%d spent=%d at=%s", routeState.routeProgressAdvancedAtMs, lastPartialRetryAtMs, partialRetriesWorking, retryLoc);
-                    partialRetriesWorking = 0;
+                boolean movedSinceLastRetry = session.lastPartialRetryAtLoc == null
+                        || (retryLoc != null && !retryLoc.equals(session.lastPartialRetryAtLoc));
+                if (TailDecision.shouldRefillPartialRetryBudget(session.partialRetriesWorking, movedSinceLastRetry,
+                        routeState.routeProgressAdvancedAtMs, session.lastPartialRetryAtMs)) {
+                    walkerDiag("partial retry budget refilled progressAt=%d lastRetryAt=%d spent=%d at=%s", routeState.routeProgressAdvancedAtMs, session.lastPartialRetryAtMs, session.partialRetriesWorking, retryLoc);
+                    session.partialRetriesWorking = 0;
                 }
                 TailDecision.TailAction partialAction = TailDecision.decide(false, true, exit,
-                        partialRetriesWorking, TailDecision.MAX_PARTIAL_RETRIES);
+                        session.partialRetriesWorking, TailDecision.MAX_PARTIAL_RETRIES);
                 if (partialAction == TailDecision.TailAction.PARTIAL_PROGRESS_REPLAN) {
-                    walkerDiag("partial retry exempt exitReason=%s tail=%d spent=%d", exit.wireName(offPathDeferDetail), processWalkTail, partialRetriesWorking);
+                    walkerDiag("partial retry exempt exitReason=%s tail=%d spent=%d", exit.wireName(offPathDeferDetail), session.processWalkTail, session.partialRetriesWorking);
                     recalculatePath();
                     continue;
                 }
                 if (partialAction == TailDecision.TailAction.PARTIAL_RETRY_REPLAN) {
-                    lastPartialRetryAtMs = System.currentTimeMillis();
-                    lastPartialRetryAtLoc = retryLoc;
-                    Telemetry.recordPartialRetry(partialRetriesWorking + 1, finalDist);
-                    WebWalkLog.partialRetry(finalDist, partialRetriesWorking + 1, TailDecision.MAX_PARTIAL_RETRIES);
+                    session.lastPartialRetryAtMs = System.currentTimeMillis();
+                    session.lastPartialRetryAtLoc = retryLoc;
+                    Telemetry.recordPartialRetry(session.partialRetriesWorking + 1, finalDist);
+                    WebWalkLog.partialRetry(finalDist, session.partialRetriesWorking + 1, TailDecision.MAX_PARTIAL_RETRIES);
                     recalculatePath();
-                    partialRetriesWorking++;
+                    session.partialRetriesWorking++;
                     continue;
                 }
                 WebWalkLog.partialExhausted(finalDist);
@@ -3544,7 +3781,7 @@ public class Rs2Walker {
                             System.currentTimeMillis(),
                             routeState.lastMovedTimeMs,
                             routeState.routeProgressAdvancedAtMs,
-                            lastAttemptedMinimapClickAtMs,
+                            session.lastAttemptedMinimapClickAtMs,
                             routeState.interimLastProgressAtMs);
                     long now = System.currentTimeMillis();
                     if (routeState.lastTransportHandledAtMs > 0
@@ -3558,7 +3795,7 @@ public class Rs2Walker {
                         }
                     }
                     if (offPathWaitMs > 0) {
-                        final long deferredLastClickAtMs = lastAttemptedMinimapClickAtMs;
+                        final long deferredLastClickAtMs = session.lastAttemptedMinimapClickAtMs;
                         if (routeState.lastTransportHandledAtMs > 0
                                 && System.currentTimeMillis() - routeState.lastTransportHandledAtMs <= POST_TRANSPORT_PATH_TMARK_WINDOW_MS) {
                             WebWalkLog.tmark("post_transport_offpath_sleep",
@@ -3572,21 +3809,21 @@ public class Rs2Walker {
                                         || currentOffPathRecalcDeferralReason(deferredLastClickAtMs) == null,
                                 (int) offPathWaitMs);
                     }
-                    if (walkCancelledDiag(target, "processWalk:after-off-path-wait", processWalkTail)) {
+                    if (walkCancelledDiag(target, "processWalk:after-off-path-wait", session.processWalkTail)) {
                         return WalkerState.EXIT;
                     }
                 }
-                // Benign yields: outer for-loop increments processWalkTail each iteration; exempt so
+                // Benign yields: outer for-loop increments session.processWalkTail each iteration; exempt so
                 // long minimap interim waits cannot exhaust MAX_PROCESS_WALK_TAIL_ITERATIONS and EXIT.
                 if (exit.isTailExempt()) {
-                    consecutiveExemptIterations = trackExemptRun(consecutiveExemptIterations, target, exit, offPathDeferDetail);
-                    walkerDiag("tail exempt exitReason=%s tailBefore=%d", exit.wireName(offPathDeferDetail), processWalkTail);
-                    processWalkTail--;
+                    session.consecutiveExemptIterations = trackExemptRun(session.consecutiveExemptIterations, target, exit, offPathDeferDetail);
+                    walkerDiag("tail exempt exitReason=%s tailBefore=%d", exit.wireName(offPathDeferDetail), session.processWalkTail);
+                    session.processWalkTail--;
                 } else {
-                    consecutiveExemptIterations = 0;
+                    session.consecutiveExemptIterations = 0;
                 }
                 walkerDiag("continue outer tail nextIdx=%d exitReason=%s finalDist=%d partialPath=%s",
-                        processWalkTail + 1, exit.wireName(offPathDeferDetail),
+                        session.processWalkTail + 1, exit.wireName(offPathDeferDetail),
                         finalDist, partialPath);
                 continue;
             }
@@ -3598,13 +3835,13 @@ public class Rs2Walker {
                 return WalkerState.EXIT;
             }
             if (isClientThreadReadTimeout(ex)
-                    && clientThreadTimeoutRetries < CLIENT_THREAD_TIMEOUT_RETRIES
+                    && session.clientThreadTimeoutRetries < CLIENT_THREAD_TIMEOUT_RETRIES
                     && Objects.equals(currentTarget, target)
                     && !Thread.currentThread().isInterrupted()) {
-                int nextRetry = ++clientThreadTimeoutRetries;
+                int nextRetry = ++session.clientThreadTimeoutRetries;
                 WebWalkLog.spInfo("client_thread_timeout_retry | attempt={}/{} target={}",
                         nextRetry, CLIENT_THREAD_TIMEOUT_RETRIES, target);
-                processWalkTail--;
+                session.processWalkTail--;
                 continue;
             }
             log.error("Exception in Rs2Walker:", ex);
@@ -3613,17 +3850,7 @@ public class Rs2Walker {
             return WalkerState.EXIT;
         }
         }
-        Microbot.log(Level.WARN,
-                "[WalkerDiag] exceeded MAX_PROCESS_WALK_TAIL_ITERATIONS (%d) target=%s currentTarget=%s interim=%s stuck=%d player=%s — enable DEBUG for per-iteration traces",
-                MAX_PROCESS_WALK_TAIL_ITERATIONS,
-                target,
-                currentTarget,
-                routeState.interimTargetWp,
-                routeState.stuckCount,
-                Rs2Player.getWorldLocation());
-        WebWalkLog.tailExceeded(MAX_PROCESS_WALK_TAIL_ITERATIONS, target, currentTarget, routeState.interimTargetWp, routeState.stuckCount,
-                Rs2Player.getWorldLocation());
-        return WalkerState.EXIT;
+        return null;
     }
 
     public static boolean walkNextTo(GameObject target) {
