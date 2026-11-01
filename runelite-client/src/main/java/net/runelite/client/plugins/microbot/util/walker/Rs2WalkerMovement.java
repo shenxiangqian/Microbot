@@ -143,24 +143,24 @@ final class Rs2WalkerMovement {
     /**
      * 小地图点击的世界半径（格）。
      *
-     * <p><b>与 Fst 对齐</b>：固定返回 {@link Rs2Walker#NORMAL_MINIMAP_REACH_EUCLIDEAN}（13），
-     * 调用处再减 1 得到 12 格的点击距离——比 Fst 的 {@code MINIMAP_COMMAND_RADIUS = 10}
+     * <p>固定返回 {@link Rs2Walker#NORMAL_MINIMAP_REACH_EUCLIDEAN}（13），
+     * 调用处再减 1 得到 12 格的点击距离——比 {@link WalkerClickPolicy#MINIMAP_COMMAND_RADIUS}（10）
      * 长 2 格，用来换更多"下一次点击"的时间余量，见该常量的说明。</p>
      *
-     * <p>原版这里是「按小地图缩放浮动」的（5~13）：缩放合适时能算出 13，点击距离比 Fst 长 3 格，
+     * <p>这里不能按小地图缩放浮动（5~13）：缩放合适时能算出 13，点击距离偏长，
      * 而且往往正好贴在小地图圆边上——点击被 {@code isPointInsideMinimap} 拒绝后只能回退到别的点，
-     * 落点飘、节奏不匀。Fst 之所以稳，是因为它同时把缩放钉在 5 像素/格（见
-     * {@code Rs2WalkerFst.walkMiniMap(point, 5)}），10 格必然落在圆内。</p>
+     * 落点飘、节奏不匀。之所以稳，是因为同时把缩放钉在 5 像素/格（见
+     * {@link #WALKER_MINIMAP_ZOOM}），10 格必然落在圆内。</p>
      */
     static int normalMinimapReach() {
-        int fstReach = NORMAL_MINIMAP_REACH_EUCLIDEAN;
+        int reach = NORMAL_MINIMAP_REACH_EUCLIDEAN;
         int clipReach = minimapClipReachTiles();
-        if (clipReach > 0 && clipReach < fstReach) {
+        if (clipReach > 0 && clipReach < reach) {
             // 用户把小地图缩放调得很近时，圆内能容下的世界半径变小，点击距离必须跟着收短，
             // 否则点击会落到圆外被 isPointInsideMinimap 拒绝，再回退到别的点——落点飘、节奏不匀。
             return Math.max(MIN_MINIMAP_REACH_EUCLIDEAN, clipReach);
         }
-        return fstReach;
+        return reach;
     }
 
     /**
@@ -321,10 +321,9 @@ final class Rs2WalkerMovement {
     /**
      * 走位期间固定的小地图缩放（每格多少像素）。
      *
-     * <p>与 Fst 一致（{@code Rs2WalkerFst.walkMiniMap(point, 5)}）。小地图圆的像素半径固定在
-     * 约 80px，"一格占多少像素"完全由缩放决定：缩放被用户调小（每格 1~2px）时，落点误差 1px
-     * 就是 1 格，点下去必然落到邻格——人物走偏、walker 反复补点，表现出来就是"跑起来一顿一顿"。
-     * 钉在 5px/格时，10 格的点击目标正好落在圆内 50px 处，精度足够。</p>
+     * <p>小地图圆的像素半径固定在约 80px，"一格占多少像素"完全由缩放决定：缩放被用户调小
+     * （每格 1~2px）时，落点误差 1px 就是 1 格，点下去必然落到邻格——人物走偏、walker 反复补点，
+     * 表现出来就是"跑起来一顿一顿"。钉在 5px/格时，10 格的点击目标正好落在圆内 50px 处，精度足够。</p>
      */
     static final double WALKER_MINIMAP_ZOOM = WalkerClickPolicy.MINIMAP_ZOOM;
 
@@ -472,9 +471,9 @@ final class Rs2WalkerMovement {
         if (target == null || playerLoc == null || target.equals(playerLoc)) {
             return null;
         }
-        // Fst 的派发顺序：近目标（5 格内）先走主屏幕——小地图上 2 格的落点离玩家只有几个像素，
-        // 命中哪一格不确定；主屏幕的地面点击是逐格精确的。Fst 的主屏幕点击只在目标已经在
-        // 屏幕上时才点，而且不转镜头（见 RuneLiteWebWalkRuntimeFst.shouldPreferCanvas）。
+        // 派发顺序：近目标（5 格内）先走主屏幕——小地图上 2 格的落点离玩家只有几个像素，
+        // 命中哪一格不确定；主屏幕的地面点击是逐格精确的。主屏幕点击只在目标已经在
+        // 屏幕上时才点，而且不转镜头（见 {@link WalkerClickPolicy#shouldPreferCanvas}）。
         if (WalkerClickPolicy.shouldPreferCanvas(playerLoc, target)
                 && walkFastCanvasOnScreenOnly(target, true, false)) {
             WebWalkLog.spDebug("route_scene_click | to={} player={}",
@@ -488,7 +487,7 @@ final class Rs2WalkerMovement {
                     compactWorldPoint(target), compactWorldPoint(playerLoc));
             return target;
         }
-        // 小地图点不到：沿路线往回找可点的路径点（Fst 的 dispatchRouteMinimap 回退链）。
+        // 小地图点不到：沿路线往回找可点的路径点（{@link WalkerClickPolicy#fallbackAlongPath} 的回退链）。
         WorldPoint rawFallback = walkRawPathMiniMapTargetToward(rawPath, target, playerLoc,
                 maxEuclidean, rawAnchorIndex);
         if (rawFallback != null) {
@@ -501,7 +500,7 @@ final class Rs2WalkerMovement {
             return sceneFallback;
         }
         // 几何猜测挪到最后：它算出来的点不一定在路线上，人物会走进旁边的房间再被卡住，
-        // 这是原版跑起来一顿一顿的主要来源之一。Fst 没有这种猜测。
+        // 这是跑起来一顿一顿的主要来源之一，优先用前面几档路线内落点。
         if (allowDirectionalFallback && walkMiniMapToward(target, playerLoc, maxEuclidean)) {
             return target;
         }
@@ -810,20 +809,20 @@ final class Rs2WalkerMovement {
             }
         }
         if (selected == null) {
-            // Fst 的兜底选点：直接在原始路线上取「最远 BFS 可达点」
-            // （Fst 的 selectForwardCandidate，见 RuneLiteWebWalkRuntimeFst）。
+            // 兜底选点：直接在原始路线上取「最远 BFS 可达点」
+            // （见 {@link WalkerClickPolicy#selectForwardCandidate}）。
             // 锚点扫描整体失败（锚点过期、路线折回、沿路闸门把候选全否了）时，
             // 这条路仍能给出路线内的可达点，而不是把点击让给离路线的几何猜测。
             selected = selectForwardCandidateFallback(rawPath, playerLoc, maxEuclidean);
             if (selected != null) {
-                routeState.lastRouteClickTier = "fstforward";
+                routeState.lastRouteClickTier = "forward";
             }
         }
         return selected;
     }
 
     /**
-     * Fst 的 {@code selectForwardCandidate} 兜底：原始路线上离玩家最远的可达点（≤半径）。
+     * 兜底选点：原始路线上离玩家最远的可达点（≤半径）。
      *
      * <p>与锚点扫描的区别：锚点扫描依赖「平滑路线 → 原始路线」的索引映射，映射过期或折回时
      * 会整体失败；这里直接从原始路线按「玩家出发的 BFS 可达」重新选点。</p>

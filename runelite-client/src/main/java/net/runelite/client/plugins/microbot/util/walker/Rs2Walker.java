@@ -3529,7 +3529,7 @@ public class Rs2Walker {
 
                         final WorldPoint b = clickedTarget;
                         final WorldPoint before = posBefore;
-                        // 证据驱动的等待（对齐 Fst 的 awaitChange）。
+                        // 证据驱动的等待（等“状态真的变了”就走）。
                         //
                         // 旧实现是"先睡满 600ms 再看状态"，而点击目标是 9~10 格外的远处点，
                         // 玩家在 600ms 内根本不可能走近到 2~4 格，proximity 条件恒不成立，
@@ -3558,7 +3558,7 @@ public class Rs2Walker {
                             return WalkerState.EXIT;
                         }
 
-                        // 不再在同一轮 pass 里补第二次点击（Fst：一次派发 + awaitChange）。
+                        // 不再在同一轮 pass 里补第二次点击（一次派发，然后等状态变化）。
                         //
                         // 旧逻辑在 750ms 处只要"位置没变 && 没动"就立刻再点一次，但服务端已受理、
                         // 只是客户端还没起走时（1 个 tick 往返）同样满足这个条件——第二次点击会覆盖
@@ -3566,7 +3566,7 @@ public class Rs2Walker {
                         // 且受"起走宽限期"保护（见 WebWalkMovementPlanner.MOVEMENT_START_GRACE_MS）。
 
                         // 点击后也不做场景扫描，除非能证明这次点击确实没生效：
-                        // 玩家仍在原地，且已经过了起走宽限期。Fst 派发后只 awaitChange，
+                        // 玩家仍在原地，且已经过了起走宽限期。派发后只等状态变化，
                         // 扫描留到下一轮 pass——否则扫描会和刚落下的行走点击抢同一拍。
                         boolean clickFailed = afterClickWait != null
                                 && afterClickWait.equals(before)
@@ -4112,7 +4112,7 @@ public class Rs2Walker {
     /**
      * Clicks {@code worldPoint} on the minimap, at the walker's pinned zoom (5 px/tile).
      *
-     * <p>The zoom is pinned for the same reason Fst pins it: the minimap circle is a fixed ~80px, so
+     * <p>The zoom is pinned because the minimap circle is a fixed ~80px, so
      * "pixels per tile" is what decides whether the intended tile is inside the circle and whether
      * a 1px error lands on the neighbouring tile. At the user's own zoom (1~2 px/tile) a click is
      * off by a whole tile, the character walks to the wrong place and the walker has to re-click —
@@ -4127,7 +4127,7 @@ public class Rs2Walker {
         if (!disableWalkerUpdate && !Rs2MiniMap.isPointInsideMinimap(point)) return false;
 
         // 小地图点击后不再转动相机：小地图随镜头偏航旋转，行走中转镜头会让下一次点击落点偏移，
-        // 造成重点击和停顿（Fst 版也不转镜头）。主屏幕点击路径仍保留相机对齐。
+        // 造成重点击和停顿。主屏幕点击路径仍保留相机对齐。
         Microbot.getMouse().click(point);
         alignCameraTowardWalkTarget(worldPoint);
         return true;

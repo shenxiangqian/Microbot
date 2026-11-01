@@ -18,7 +18,7 @@ final class WebWalkMovementPlanner
 	/**
 	 * 点击后给服务端开始移动的宽限时间。
 	 *
-	 * <p>对齐 Fst 的 {@code MINIMAP_COMMAND_START_GRACE_TICKS = 4}（4 个游戏刻 ≈ 2400ms）：
+	 * <p>取 4 个游戏刻（≈2400ms）：
 	 * 服务端已受理、客户端还没起走的那一拍里，绝不能判定"点击失败"并补点——补点会覆盖
 	 * 上一次的落点，表现出来就是跑动中的点位抖动和一顿一顿。</p>
 	 */

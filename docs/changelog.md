@@ -2,6 +2,23 @@
 
 按日期倒序记录功能更新与重大缺陷修复（新内容在最上面）。
 
+## 2026-11-01 移除 FST 版寻路（walkerfst 整包下线）
+
+**修改内容**
+
+- 删除 `microbot/walkerfst/` 整个包（183 个文件）：旧版 walker（`Rs2WalkerFst` 等）、旧版最短路径
+  （`PathfinderFst` 等），以及配套的 enums / door / obstacle / leaguetransport 副本。
+  这份平行副本自建立以来就没有任何生产代码引用，当前生效的仍是 `util/walker` + `microbot/shortestpath`。
+- 删除 `.tmp_cmp/`（127 个已跟踪文件）：当初做两版对比时留下的中间产物（diff、整份 Rs2Walker 副本等）。
+- 清理指向已删类的注释与文档：`WalkerClickPolicy`、`Rs2WalkerMovement`、`Rs2Walker`、
+  `WebWalkMovementPlanner`、`WalkerLogSwitch`、`WalkerClickPolicyTest` 中对 “Fst 版” 的引用改写为
+  对当前实现的直接说明；寻路点击档位标签 `fstforward` 改名为 `forward`。
+
+**影响**
+
+- 无行为变化：被删代码不在任何运行路径上，寻路行为仍由 `util/walker` + `microbot/shortestpath` 决定。
+- 寻路日志开关 `WalkerLogSwitch` 仍只控制 `util.walker` 与 `shortestpath` 两棵 logger 子树。
+
 ## 2026-11-01 修复合并 main 时丢失的编译依赖
 
 **问题现象**
