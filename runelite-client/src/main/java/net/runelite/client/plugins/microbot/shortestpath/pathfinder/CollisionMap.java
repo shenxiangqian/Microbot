@@ -310,7 +310,8 @@ public class CollisionMap {
                     if (isMoa) moaIgnored++;
                     continue;
                 }
-                int cost = config.getDistanceBeforeUsingTeleport() + transport.getDuration();
+                int cost = teleportCost(config.getDistanceBeforeUsingTeleport(), transport.getDuration(),
+                        transport.getType() == TransportType.TELEPORTATION_MINIGAME);
                 neighbors.add(new TransportNode(transport.getDestination(), node, cost, transport));
                 if (isMoa) {
                     moaAddedHere++;
@@ -437,7 +438,8 @@ public class CollisionMap {
                         continue;
                     }
                     neighbors.add(new TransportNode(origin, node,
-                            config.getDistanceBeforeUsingTeleport() + transport.getDuration(), transport));
+                            teleportCost(config.getDistanceBeforeUsingTeleport(), transport.getDuration(),
+                                    transport.getType() == TransportType.TELEPORTATION_MINIGAME), transport));
                 } else {
                     neighbors.add(new TransportNode(origin, node, transport.getDuration(), transport));
                 }

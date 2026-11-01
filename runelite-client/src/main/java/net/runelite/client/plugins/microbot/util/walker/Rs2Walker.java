@@ -4129,6 +4129,7 @@ public class Rs2Walker {
         // 小地图点击后不再转动相机：小地图随镜头偏航旋转，行走中转镜头会让下一次点击落点偏移，
         // 造成重点击和停顿（Fst 版也不转镜头）。主屏幕点击路径仍保留相机对齐。
         Microbot.getMouse().click(point);
+        alignCameraTowardWalkTarget(worldPoint);
         return true;
     }
 
@@ -4396,6 +4397,15 @@ public class Rs2Walker {
         routeState.idleNudgeLastObservedLocation = playerLoc;
         routeState.stuckCount = 0;
         return true;
+    }
+
+    static boolean routeClickStillUnanswered(WorldPoint cancelGoal, WorldPoint before) {
+        if (before == null || !before.equals(Rs2Player.getWorldLocation()) || Rs2Player.isMoving()) {
+            return false;
+        }
+        waitForMovementStartAfterRecovery(cancelGoal, before, null, null, -1);
+        return !isWalkCancelled(cancelGoal)
+                && before.equals(Rs2Player.getWorldLocation()) && !Rs2Player.isMoving();
     }
 
     static boolean proximityWaitSatisfied(WorldPoint now,

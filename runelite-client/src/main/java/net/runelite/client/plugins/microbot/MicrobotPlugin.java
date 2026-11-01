@@ -28,6 +28,7 @@ import net.runelite.client.plugins.microbot.alerts.ClientAlertReporter;
 import net.runelite.client.plugins.microbot.alerts.DashboardSync;
 import net.runelite.client.plugins.microbot.alerts.DeviceLinkFlow;
 import net.runelite.client.plugins.microbot.diagnostics.BugReportTracker;
+import net.runelite.client.plugins.microbot.diagnostics.FlightRecorder;
 import net.runelite.client.plugins.microbot.diagnostics.ScriptErrorReporter;
 import net.runelite.client.plugins.microbot.pouch.PouchOverlay;
 import net.runelite.client.plugins.microbot.ui.MicrobotPluginConfigurationDescriptor;
@@ -166,6 +167,9 @@ public class MicrobotPlugin extends Plugin
 	private ScriptErrorReporter scriptErrorReporter;
 
 	@Inject
+	private FlightRecorder flightRecorder;
+
+	@Inject
 	private ClientAlertReporter clientAlertReporter;
 
 	@Inject
@@ -290,6 +294,7 @@ public class MicrobotPlugin extends Plugin
 		helpMenu.uninstall();
 		gameChatAttachment.remove();
 		scriptErrorAttachment.remove();
+		flightRecorder.stop();
 		eventBus.unregister(clientAlertReporter);
 		clientAlertReporter.stop();
 		dashboardSync.stop();
