@@ -2,6 +2,28 @@
 
 按日期倒序记录功能更新与重大缺陷修复（新内容在最上面）。
 
+## 2026-11-01 修复合并 main 时丢失的编译依赖
+
+**问题现象**
+
+`new_old_walker_dev` 分支在合并 main 之后编译不过，报三个“找不到符号”：
+
+- `util/walker/Rs2Walker.java` 引用了 `util/walker/state/WalkStepSession`，但该类从未提交到本分支；
+- `shortestpath/pathfinder/CollisionMap.java` 里 `teleportCost(int, int, boolean)` 只有调用点，
+  方法定义和 `MINIGAME_TELEPORT_PENALTY` 常量在合并时丢失，`Rs2WalkerBankingPlanner` 同样调用不到。
+
+**修改内容**
+
+- 补回 `util/walker/state/WalkStepSession.java`：分步寻路（`walkStepFull`）的跨调用会话对象，
+  承载尾循环里 13 个跨迭代局部变量，字段与本分支 `Rs2Walker` 的用法完全一致。
+- 从 main 取回 `CollisionMap.teleportCost(int, int, boolean)` 与 `MINIGAME_TELEPORT_PENALTY = 200`：
+  minigame（Grouping）传送共享 20 分钟冷却且要多次点击界面，raw duration 下几乎总能赢，
+  因此额外加 200 格代价。
+
+**影响**
+
+- 只补齐缺失的符号，不改变寻路行为：minigame 传送的定价与 main 上的实现完全一致。
+
 ## 2026-10-30 修复 `walkStepFull` 换目标后仍返回旧终态的缺陷
 
 **问题现象**

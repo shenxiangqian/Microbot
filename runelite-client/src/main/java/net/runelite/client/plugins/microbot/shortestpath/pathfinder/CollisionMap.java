@@ -19,6 +19,22 @@ import java.util.function.IntSupplier;
 public class CollisionMap {
 
     private static final int SUPPRESSED_TRANSPORT_ENDPOINT_RADIUS = 3;
+
+    /**
+     * Extra cost, in tiles, on a minigame (Grouping) teleport. They share a 20 minute cooldown and take
+     * several interface clicks, so they should only win when they save a lot of walking; at raw duration
+     * they won nearly every comparison and the walker reached for Grouping even on short trips.
+     */
+    static final int MINIGAME_TELEPORT_PENALTY = 200;
+
+    /**
+     * What the search charges for a teleport edge, in tiles. The bank-vs-direct comparison uses the same
+     * price, so a teleport is never "one tile" there while the pathfinder thinks it costs 40.
+     */
+    public static int teleportCost(int distanceBeforeUsingTeleport, int duration, boolean minigame) {
+        return distanceBeforeUsingTeleport + duration + (minigame ? MINIGAME_TELEPORT_PENALTY : 0);
+    }
+
     // Enum.values() makes copies every time which hurts performance in the hotpath
     private static final OrdinalDirection[] ORDINAL_VALUES = OrdinalDirection.values();
 
