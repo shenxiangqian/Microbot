@@ -2,6 +2,23 @@
 
 按日期倒序记录功能更新与重大缺陷修复（新内容在最上面）。
 
+## 2026-11-01 移除 FST 版寻路（walkerfst 整包下线）
+
+**修改内容**
+
+- 删除 `microbot/walkerfst/` 整个包（183 个文件）：旧版 walker（`Rs2WalkerFst` 等）、旧版最短路径
+  （`PathfinderFst` 等），以及配套的 enums / door / obstacle / leaguetransport 副本。
+  这份平行副本自建立以来就没有任何生产代码引用，当前生效的仍是 `util/walker` + `microbot/shortestpath`。
+- 删除 `.tmp_cmp/`（127 个已跟踪文件）：当初做两版对比时留下的中间产物（diff、整份 Rs2Walker 副本等）。
+- 清理指向已删类的注释与文档：`WalkerClickPolicy`、`Rs2WalkerMovement`、`Rs2Walker`、
+  `WebWalkMovementPlanner`、`WalkerClickPolicyTest` 以及 `docs/2510/30核心包walkStep分步寻路方案.md`
+  中对 "Fst 版" 的引用改写为对当前实现的直接说明；寻路点击档位标签 `fstforward` 改名为 `forward`。
+
+**影响**
+
+- 无行为变化：被删代码不在任何运行路径上，寻路行为仍由 `util/walker` + `microbot/shortestpath` 决定。
+- 寻路日志开关 `WalkerLogSwitch` 仍只控制 `util.walker` 与 `shortestpath` 两棵 logger 子树。
+
 ## 2026-10-30 核心包 walkStep 分步寻路方案（设计文档，未实现）
 
 **修改内容**
@@ -27,19 +44,17 @@
 
 **修改内容**
 
-- 新增 `WalkerLogSwitch`（`microbot/util/walker/WalkerLogSwitch.java`），统一控制寻路日志的三个 logger 前缀：
-  - `net.runelite.client.plugins.microbot.util.walker`（原版 walker）
-  - `net.runelite.client.plugins.microbot.shortestpath`（原版最短路径 / pathfinder）
-  - `net.runelite.client.plugins.microbot.walkerfst`（FST 版本全包）
+- 新增 `WalkerLogSwitch`（`microbot/util/walker/WalkerLogSwitch.java`），统一控制寻路日志的两个 logger 前缀：
+  - `net.runelite.client.plugins.microbot.util.walker`（walker）
+  - `net.runelite.client.plugins.microbot.shortestpath`（最短路径 / pathfinder）
 - 默认状态为**关闭**：上述 logger 级别抬到 `ERROR`，INFO/WARN 的寻路日志（`[WebWalk]`、`[Walker]`、`[WalkerTelemetry]`、pathfinder 诊断等）不再输出，也不会被 `GameChatAppender` 镜像到游戏聊天框；真正的 ERROR 仍然保留。
 - 打开后级别为 `DEBUG`，输出完整寻路细节。
-- 脚本入口（两个 Walker 共用同一开关）：
+- 脚本入口（Walker 与最短路径插件共用同一开关）：
   ```java
-  Rs2Walker.setWalkerLoggingEnabled(true);    // 或 Rs2WalkerFst
+  Rs2Walker.setWalkerLoggingEnabled(true);
   Rs2Walker.isWalkerLoggingEnabled();
   ```
-- 原有配置项 `verboseWalkerLogging` 保留同一个 config key（兼容旧配置），显示名改为 **Walker logging**，改为委托 `WalkerLogSwitch`；两个 shortestpath 插件的 `startUp()` / `startUpHeadless()` 与 `onConfigChanged` 都会同步该状态，客户端启动时即生效。
-- 顺带修复：FST 版本的 logger 前缀列表原先漏了 `walkerfst` 包本身，导致 FST 的 debug 日志不受开关控制。
+- 原有配置项 `verboseWalkerLogging` 保留同一个 config key（兼容旧配置），显示名改为 **Walker logging**，改为委托 `WalkerLogSwitch`；`ShortestPathPlugin` 的 `startUp()` 与 `onConfigChanged` 都会同步该状态，客户端启动时即生效。
 
 **使用说明**
 

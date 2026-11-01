@@ -23,7 +23,7 @@ import org.slf4j.Marker;
  * }</pre>
  * <p>
  * 实现说明：除了调整 logger 级别，还挂了一个 logback {@link TurboFilter}。
- * 因为其它代码（例如 FST walker 的启动流程）会把自己认定的级别写回这两个包，
+ * 因为其它代码（例如 shortestpath 插件的启动流程）会把自己认定的级别写回这两个包，
  * 单靠 {@code setLevel} 会被覆盖；过滤器在级别判断之前生效，保证"关闭"始终有效。
  */
 public final class WalkerLogSwitch {

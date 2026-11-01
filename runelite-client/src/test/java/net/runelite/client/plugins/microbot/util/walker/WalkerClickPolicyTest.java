@@ -16,8 +16,8 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Fst 版移动派发规则的单测：选点（最远可达点）、回退（沿路径往回找）、
- * 近目标改走主屏幕，以及常量与 Fst 保持一致。
+ * 移动派发规则的单测：选点（最远可达点）、回退（沿路径往回找）、
+ * 近目标改走主屏幕，以及常量取值。
  */
 public class WalkerClickPolicyTest
 {
@@ -34,9 +34,9 @@ public class WalkerClickPolicyTest
 	}
 
 	@Test
-	public void constantsMatchFst()
+	public void constantsMatchPolicy()
 	{
-		// Fst: MINIMAP_COMMAND_RADIUS = 10 / STATE_WAIT_MS = 750 / CANVAS_ROUTE_RADIUS = 5
+		// MINIMAP_COMMAND_RADIUS = 10 / STATE_WAIT_MS = 750 / CANVAS_ROUTE_RADIUS = 5
 		assertEquals(10, WalkerClickPolicy.MINIMAP_COMMAND_RADIUS);
 		assertEquals(750, WalkerClickPolicy.STATE_WAIT_MS);
 		assertEquals(5, WalkerClickPolicy.CANVAS_ROUTE_RADIUS);
@@ -75,7 +75,7 @@ public class WalkerClickPolicyTest
 	@Test
 	public void stopsAtFirstPointOutsideRadius()
 	{
-		// Fst 在扫描到第一个超出半径的点时 break，不再看后面的点。
+		// 扫描到第一个超出半径的点时停下，不再看后面的点。
 		WorldPoint inside = new WorldPoint(3208, 3200, 0);
 		WorldPoint outside = new WorldPoint(3215, 3200, 0);
 		WorldPoint later = new WorldPoint(3216, 3200, 0);
