@@ -40,11 +40,12 @@ final class ScriptSelectionDialog extends JDialog {
 
     private Selection selection;
     private boolean refreshInProgress;
+    private String statusNote = "";
 
     private ScriptSelectionDialog(Window owner, MicrobotPluginManager microbotPluginManager) {
         super(owner, "Start External Script", ModalityType.APPLICATION_MODAL);
         this.microbotPluginManager = microbotPluginManager;
-        this.scripts = new ArrayList<>(microbotPluginManager.getSideLoadedScripts());
+        this.scripts = new ArrayList<>();
 
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
         setMinimumSize(DIALOG_SIZE);
@@ -53,7 +54,7 @@ final class ScriptSelectionDialog extends JDialog {
         setContentPane(buildContent());
         pack();
         setLocationRelativeTo(owner);
-        refreshList("");
+        reloadChangedScripts();
     }
 
     static Selection showDialog(Window owner, MicrobotPluginManager microbotPluginManager) {
@@ -144,6 +145,25 @@ final class ScriptSelectionDialog extends JDialog {
         return content;
     }
 
+    /**
+     * Reloads the JARs that changed on disk before the list is filled.
+     *
+     * <p>The list is built from the class loaders that are currently active, so a build that was
+     * uploaded after the client started would otherwise never show up. Only changed JARs are
+     * reloaded; a JAR whose script is running stays as it is.</p>
+     */
+    private void reloadChangedScripts() {
+        refreshInProgress = true;
+        refreshButton.setEnabled(false);
+        refreshButton.setToolTipText("Reloading script JARs...");
+        scriptList.setEnabled(false);
+        countLabel.setText("Reloading script JARs...");
+        updateActions();
+
+        microbotPluginManager.reloadChangedSideLoadedPlugins().whenComplete((result, error) ->
+                SwingUtilities.invokeLater(() -> finishRefresh(result, error)));
+    }
+
     private void refreshScripts() {
         if (refreshInProgress) {
             return;
@@ -167,6 +187,11 @@ final class ScriptSelectionDialog extends JDialog {
         scriptList.setEnabled(true);
         scripts.clear();
         scripts.addAll(microbotPluginManager.getSideLoadedScripts());
+        statusNote = "";
+        if (result != null && !result.getSkippedRunning().isEmpty()) {
+            statusNote = "  ·  " + result.getSkippedRunning().size()
+                    + " running script(s) kept; the new build applies after stopping them";
+        }
         refreshList(searchField.getText());
 
         if (error != null) {
@@ -215,7 +240,7 @@ final class ScriptSelectionDialog extends JDialog {
         if (scriptList.getSelectedIndex() < 0 && !listModel.isEmpty()) {
             scriptList.setSelectedIndex(0);
         }
-        countLabel.setText(listModel.size() + " external script(s)");
+        countLabel.setText(listModel.size() + " external script(s)" + statusNote);
         updateActions();
     }
 

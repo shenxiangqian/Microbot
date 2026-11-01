@@ -13,18 +13,21 @@ final class SideLoadedPluginDeployment {
     private final File runtimeJar;
     private final PluginJarClassLoader classLoader;
     private final List<Plugin> plugins;
+    private final SideLoadJarFingerprint fingerprint;
 
     SideLoadedPluginDeployment(
             String internalName,
             File sourceJar,
             File runtimeJar,
             PluginJarClassLoader classLoader,
-            List<Plugin> plugins) {
+            List<Plugin> plugins,
+            SideLoadJarFingerprint fingerprint) {
         this.internalName = internalName;
         this.sourceJar = sourceJar;
         this.runtimeJar = runtimeJar;
         this.classLoader = classLoader;
         this.plugins = Collections.unmodifiableList(new ArrayList<>(plugins));
+        this.fingerprint = fingerprint;
     }
 
     String getInternalName() {
@@ -45,5 +48,12 @@ final class SideLoadedPluginDeployment {
 
     List<Plugin> getPlugins() {
         return plugins;
+    }
+
+    /**
+     * @return the state of the source JAR at the time it was loaded, or {@code null} when it could not be read
+     */
+    SideLoadJarFingerprint getFingerprint() {
+        return fingerprint;
     }
 }
