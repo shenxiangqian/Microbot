@@ -400,7 +400,8 @@ public class MicrobotPluginManager {
             }
 
             SideLoadedPluginDeployment deployment = new SideLoadedPluginDeployment(
-                    internalName, pluginFile, runtimeJar, classLoader, newPlugins);
+                    internalName, pluginFile, runtimeJar, classLoader, newPlugins,
+                    SideLoadJarFingerprint.of(pluginFile));
             deployments.put(internalName, deployment);
             return deployment;
         } catch (ThreadDeath e) {
@@ -474,7 +475,8 @@ public class MicrobotPluginManager {
                 .findFirst()
                 .ifPresent(deployment -> lastStartedSideLoadedScript = new SideLoadedScriptReference(
                         deployment.getInternalName(),
-                        event.getPlugin().getClass().getName()));
+                        event.getPlugin().getClass().getName(),
+                        displayNameOf(event.getPlugin())));
     }
 
     public boolean isManagedSideLoadedPlugin(Plugin plugin) {
@@ -632,6 +634,14 @@ public class MicrobotPluginManager {
                 "Stopped " + activePlugins.size() + " external script(s)", null);
     }
 
+    /**
+     * Restarts the last started side-loaded script.
+     *
+     * <p>When the JAR on disk is still the one that is loaded, the script is simply stopped and
+     * started again on the existing class loader. When the JAR changed, was renamed or was
+     * removed, the side-load directory is brought up to date and the script that carries the
+     * same display name as the last started one is started instead.</p>
+ */
     private SideLoadedScriptOperationResult restartSideLoadedScriptNow(String internalName, String className) {
         SideLoadedPluginDeployment deployment = deployments.get(internalName);
         boolean anotherScriptActive = getActiveSideLoadedScripts().stream()
@@ -641,6 +651,15 @@ public class MicrobotPluginManager {
                     "Stop the currently running script before restarting the last script");
         }
 
+        if (deployment != null && !hasChangedOnDisk(deployment, deployment.getSourceJar())) {
+            Plugin plugin = findDeploymentPlugin(deployment, className);
+            if (plugin == null || !isLaunchableSideLoadedScript(plugin)) {
+                return SideLoadedScriptOperationResult.failed("The selected script is no longer loaded");
+            }
+            return restartLoadedScript(deployment, plugin);
+        }
+
+        String displayName = resolveRestartDisplayName(deployment, className);
         if (deployment != null) {
             List<String> unloadErrors = unloadDeployment(deployment, true);
             if (!unloadErrors.isEmpty()) {
@@ -649,35 +668,136 @@ public class MicrobotPluginManager {
             }
         }
 
-        SideLoadedPluginDeployment replacement = null;
-        try {
-            replacement = loadSideLoadPlugin(internalName, false);
-            pluginManager.loadDefaultPluginConfiguration(replacement.getPlugins());
-            disablePlugins(replacement.getPlugins());
-        } catch (PluginInstantiationException | IOException e) {
-            if (replacement != null) {
-                List<String> cleanupErrors = unloadDeployment(replacement, true);
-                if (!cleanupErrors.isEmpty()) {
-                    reloadBlockedInternalNames.add(internalName);
-                }
-            }
-            return SideLoadedScriptOperationResult.failed(messageOrClassName(e));
+        // The JAR was replaced, renamed or removed: bring the side-load directory up to date so
+        // the new build is loaded, then pick the script that carries the same display name.
+        SideLoadRefreshResult reloadResult = reloadChangedSideLoadedPluginsNow();
+
+        SideLoadedPluginDeployment target = findDeploymentByDisplayName(displayName);
+        if (target == null) {
+            return SideLoadedScriptOperationResult.failed(
+                    describeMissingScript(displayName, reloadResult));
         }
 
-        Plugin reloadedPlugin = findDeploymentPlugin(replacement, className);
-        if (reloadedPlugin == null || !isLaunchableSideLoadedScript(reloadedPlugin)) {
-            List<String> cleanupErrors = unloadDeployment(replacement, true);
-            if (!cleanupErrors.isEmpty()) {
-                reloadBlockedInternalNames.add(internalName);
-            }
-            return SideLoadedScriptOperationResult.failed("The reloaded JAR no longer contains the selected script");
+        Plugin reloadedPlugin = findDeploymentPluginByDisplayName(target, displayName);
+        if (reloadedPlugin == null) {
+            return SideLoadedScriptOperationResult.failed(
+                    "The script named '" + displayName + "' is no longer loaded");
         }
-        return startPluginInstance(replacement, reloadedPlugin);
+        return startPluginInstance(target, reloadedPlugin, "Restarted");
+    }
+
+    /**
+     * Builds the error shown when no script carries the expected display name.
+     */
+    private String describeMissingScript(String displayName, SideLoadRefreshResult reloadResult) {
+        StringBuilder message = new StringBuilder("No script named '")
+                .append(displayName)
+                .append("' was found in the side-load directory");
+        String available = getSideLoadedScripts().stream()
+                .map(script -> script.getDisplayName() + " [" + script.getInternalName() + ".jar]")
+                .collect(Collectors.joining(", "));
+        if (!available.isEmpty()) {
+            message.append(". Available: ").append(available);
+        }
+        if (!reloadResult.getFailures().isEmpty()) {
+            message.append(". Load errors: ").append(
+                    String.join("; ", reloadResult.getFailures().values()));
+        }
+        return message.toString();
+    }
+
+    private SideLoadedPluginDeployment findDeploymentByDisplayName(String displayName) {
+        if (Strings.isNullOrEmpty(displayName)) {
+            return null;
+        }
+        return deployments.values().stream()
+                .filter(deployment -> findDeploymentPluginByDisplayName(deployment, displayName) != null)
+                .findFirst()
+                .orElse(null);
+    }
+
+    /**
+     * Stops and starts the script that is already loaded, keeping its class loader.
+     */
+    private SideLoadedScriptOperationResult restartLoadedScript(
+            SideLoadedPluginDeployment deployment,
+            Plugin plugin) {
+        List<String> errors = new ArrayList<>();
+        try {
+            runOnEdtAndWait(() -> {
+                try {
+                    pluginManager.setPluginEnabled(plugin, false);
+                } catch (RuntimeException e) {
+                    errors.add("Failed to disable " + plugin.getClass().getSimpleName());
+                    log.warn("Unable to disable side-loaded plugin {}", plugin.getClass().getSimpleName(), e);
+                }
+                try {
+                    if (pluginManager.isPluginActive(plugin)) {
+                        pluginManager.stopPlugin(plugin);
+                    }
+                } catch (PluginInstantiationException e) {
+                    errors.add("Failed to stop " + plugin.getClass().getSimpleName());
+                    log.warn("Unable to stop side-loaded plugin {}", plugin.getClass().getSimpleName(), e);
+                }
+            });
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return SideLoadedScriptOperationResult.failed("Interrupted while stopping the script");
+        } catch (InvocationTargetException e) {
+            return SideLoadedScriptOperationResult.failed(messageOrClassName(e.getCause()));
+        }
+
+        if (!errors.isEmpty()) {
+            return SideLoadedScriptOperationResult.failed(String.join("; ", errors));
+        }
+
+        return startPluginInstance(deployment, plugin, "Restarted");
+    }
+
+    /**
+     * Resolves the display name the restarted script has to carry.
+     */
+    private String resolveRestartDisplayName(SideLoadedPluginDeployment deployment, String className) {
+        String displayName = displayNameOf(findDeploymentPlugin(deployment, className));
+        if (!Strings.isNullOrEmpty(displayName)) {
+            return displayName;
+        }
+        SideLoadedScriptReference reference = lastStartedSideLoadedScript;
+        return reference == null ? null : reference.getDisplayName();
+    }
+
+    @VisibleForTesting
+    static Plugin findDeploymentPluginByDisplayName(
+            SideLoadedPluginDeployment deployment,
+            String displayName) {
+        if (deployment == null || Strings.isNullOrEmpty(displayName)) {
+            return null;
+        }
+        return deployment.getPlugins().stream()
+                .filter(MicrobotPluginManager::isLaunchableSideLoadedScript)
+                .filter(plugin -> displayName.equals(displayNameOf(plugin)))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private static String displayNameOf(Plugin plugin) {
+        if (plugin == null) {
+            return null;
+        }
+        PluginDescriptor descriptor = plugin.getClass().getAnnotation(PluginDescriptor.class);
+        return descriptor == null ? null : descriptor.name();
     }
 
     private SideLoadedScriptOperationResult startPluginInstance(
             SideLoadedPluginDeployment deployment,
             Plugin plugin) {
+        return startPluginInstance(deployment, plugin, "Started");
+    }
+
+    private SideLoadedScriptOperationResult startPluginInstance(
+            SideLoadedPluginDeployment deployment,
+            Plugin plugin,
+            String action) {
         try {
             runOnEdtAndWait(() -> {
                 pluginManager.setPluginEnabled(plugin, true);
@@ -700,9 +820,9 @@ public class MicrobotPluginManager {
             return SideLoadedScriptOperationResult.failed("The script did not enter the running state");
         }
         lastStartedSideLoadedScript = new SideLoadedScriptReference(
-                deployment.getInternalName(), plugin.getClass().getName());
+                deployment.getInternalName(), plugin.getClass().getName(), displayNameOf(plugin));
         return SideLoadedScriptOperationResult.succeeded(
-                "Started " + plugin.getName(), toSideLoadedScript(deployment, plugin));
+                action + " " + plugin.getName(), toSideLoadedScript(deployment, plugin));
     }
 
     private static Plugin findDeploymentPlugin(SideLoadedPluginDeployment deployment, String className) {
@@ -798,6 +918,149 @@ public class MicrobotPluginManager {
             future.completeExceptionally(e);
         }
         return future;
+    }
+
+    /**
+     * Reloads only the JARs whose content on disk changed since they were loaded.
+     *
+     * <p>Used when the script picker opens, so a freshly uploaded build shows up in the list
+     * without a full restart. JARs that are unchanged keep their current class loader, and a
+     * JAR whose script is currently running is left alone: reloading it would stop the script,
+     * so its new build only takes effect once the script is stopped.</p>
+     *
+     * <p>JARs that appeared in the side-load directory are loaded, JARs that disappeared are
+     * unloaded. A JAR that fails to load is dropped and reported in the result.</p>
+     *
+     * @return a future carrying the outcome of the reload
+     */
+    public CompletableFuture<SideLoadRefreshResult> reloadChangedSideLoadedPlugins() {
+        CompletableFuture<SideLoadRefreshResult> future = new CompletableFuture<>();
+        if (safeMode) {
+            future.complete(SideLoadRefreshResult.failed("Safe mode is enabled"));
+            return future;
+        }
+        if (isShuttingDown.get()) {
+            future.complete(SideLoadRefreshResult.failed("The client is shutting down"));
+            return future;
+        }
+        if (!sideLoadRefreshInProgress.compareAndSet(false, true)) {
+            future.complete(SideLoadRefreshResult.failed("A script refresh is already running"));
+            return future;
+        }
+
+        Runnable refreshTask = () -> {
+            try {
+                SideLoadRefreshResult result;
+                synchronized (sideLoadLock) {
+                    result = reloadChangedSideLoadedPluginsNow();
+                }
+                eventBus.post(new ExternalPluginsChanged());
+                future.complete(result);
+            } catch (ThreadDeath e) {
+                throw e;
+            } catch (Throwable e) {
+                log.warn("Unable to reload changed side-loaded plugins", e);
+                future.completeExceptionally(e);
+            } finally {
+                sideLoadRefreshInProgress.set(false);
+            }
+        };
+        try {
+            executor.execute(refreshTask);
+        } catch (RuntimeException e) {
+            sideLoadRefreshInProgress.set(false);
+            future.completeExceptionally(e);
+        }
+        return future;
+    }
+
+    private SideLoadRefreshResult reloadChangedSideLoadedPluginsNow() {
+        SideLoadRefreshResult result = new SideLoadRefreshResult();
+        Map<String, File> jarsOnDisk = new LinkedHashMap<>();
+        for (File file : listSideLoadJars()) {
+            jarsOnDisk.put(getInternalName(file), file);
+        }
+
+        // JARs that disappeared from the side-load directory are unloaded.
+        for (SideLoadedPluginDeployment deployment : new ArrayList<>(deployments.values())) {
+            String internalName = deployment.getInternalName();
+            if (jarsOnDisk.containsKey(internalName)) {
+                continue;
+            }
+            if (isDeploymentRunning(deployment)) {
+                result.skippedRunning.add(internalName);
+                continue;
+            }
+            List<String> unloadErrors = unloadDeployment(deployment, true);
+            if (unloadErrors.isEmpty()) {
+                result.unloaded++;
+            } else {
+                reloadBlockedInternalNames.add(internalName);
+                result.failures.put(internalName, String.join("; ", unloadErrors));
+            }
+        }
+
+        // New JARs are loaded, changed JARs are reloaded, unchanged JARs are left alone.
+        for (Map.Entry<String, File> entry : jarsOnDisk.entrySet()) {
+            String internalName = entry.getKey();
+            File jar = entry.getValue();
+            SideLoadedPluginDeployment deployment = deployments.get(internalName);
+            boolean isNew = deployment == null;
+            if (!isNew && !hasChangedOnDisk(deployment, jar)) {
+                result.unchanged++;
+                continue;
+            }
+            if (!isNew) {
+                if (isDeploymentRunning(deployment)) {
+                    result.skippedRunning.add(internalName);
+                    continue;
+                }
+                List<String> unloadErrors = unloadDeployment(deployment, true);
+                if (!unloadErrors.isEmpty()) {
+                    reloadBlockedInternalNames.add(internalName);
+                    result.failures.put(internalName, String.join("; ", unloadErrors));
+                    continue;
+                }
+                result.unloaded++;
+            }
+            if (reloadBlockedInternalNames.contains(internalName)) {
+                result.failures.putIfAbsent(internalName,
+                        "Restart required before this plugin can be loaded again");
+                continue;
+            }
+            try {
+                SideLoadedPluginDeployment replacement = loadSideLoadPlugin(internalName, false);
+                pluginManager.loadDefaultPluginConfiguration(replacement.getPlugins());
+                disablePlugins(replacement.getPlugins());
+                if (isNew) {
+                    result.loaded++;
+                } else {
+                    result.reloaded++;
+                }
+            } catch (PluginInstantiationException | IOException e) {
+                result.failures.put(internalName, e.getMessage());
+                log.warn("Unable to reload side-loaded plugin {}: {}", internalName, e.getMessage());
+            }
+        }
+        return result;
+    }
+
+    private boolean hasChangedOnDisk(SideLoadedPluginDeployment deployment, File jar) {
+        return hasJarChanged(deployment.getFingerprint(), jar);
+    }
+
+    /**
+     * @param fingerprint the state of the JAR when it was loaded, may be {@code null}
+     * @param jar the JAR file on disk
+     * @return {@code true} when the file differs from the state that was loaded
+     */
+    @VisibleForTesting
+    static boolean hasJarChanged(SideLoadJarFingerprint fingerprint, File jar) {
+        return fingerprint == null || fingerprint.differsFrom(jar);
+    }
+
+    private boolean isDeploymentRunning(SideLoadedPluginDeployment deployment) {
+        return deployment.getPlugins().stream().anyMatch(pluginManager::isPluginActive);
     }
 
     private SideLoadRefreshResult refreshSideLoadedPluginsNow() {
@@ -1921,6 +2184,9 @@ public class MicrobotPluginManager {
     public static final class SideLoadRefreshResult {
         private int unloaded;
         private int loaded;
+        private int reloaded;
+        private int unchanged;
+        private final List<String> skippedRunning = new ArrayList<>();
         private final Map<String, String> failures = new LinkedHashMap<>();
 
         private static SideLoadRefreshResult failed(String message) {
@@ -1937,6 +2203,27 @@ public class MicrobotPluginManager {
             return loaded;
         }
 
+        /**
+         * @return the number of JARs that were reloaded because the file on disk changed
+         */
+        public int getReloaded() {
+            return reloaded;
+        }
+
+        /**
+         * @return the number of JARs that were left untouched because the file on disk did not change
+         */
+        public int getUnchanged() {
+            return unchanged;
+        }
+
+        /**
+         * @return the internal names of JARs that were left alone because their script is running
+         */
+        public List<String> getSkippedRunning() {
+            return Collections.unmodifiableList(skippedRunning);
+        }
+
         public Map<String, String> getFailures() {
             return Collections.unmodifiableMap(failures);
         }
@@ -1946,9 +2233,22 @@ public class MicrobotPluginManager {
         }
 
         public String getSummary() {
-            return String.format(
-                    "Reloaded %d script JAR(s), unloaded %d, failed %d",
-                    loaded, unloaded, failures.size());
+            StringBuilder summary = new StringBuilder("Reloaded ")
+                    .append(loaded + reloaded)
+                    .append(" script JAR(s)");
+            if (unloaded > 0) {
+                summary.append(", unloaded ").append(unloaded);
+            }
+            if (unchanged > 0) {
+                summary.append(", unchanged ").append(unchanged);
+            }
+            if (!skippedRunning.isEmpty()) {
+                summary.append(", kept ").append(skippedRunning.size()).append(" running");
+            }
+            if (!failures.isEmpty()) {
+                summary.append(", failed ").append(failures.size());
+            }
+            return summary.toString();
         }
     }
 
@@ -2077,10 +2377,12 @@ public class MicrobotPluginManager {
     public static final class SideLoadedScriptReference {
         private final String internalName;
         private final String className;
+        private final String displayName;
 
-        private SideLoadedScriptReference(String internalName, String className) {
+        private SideLoadedScriptReference(String internalName, String className, String displayName) {
             this.internalName = internalName;
             this.className = className;
+            this.displayName = displayName;
         }
 
         public String getInternalName() {
@@ -2089,6 +2391,13 @@ public class MicrobotPluginManager {
 
         public String getClassName() {
             return className;
+        }
+
+        /**
+         * @return the display name of the script, used to find it again after the JAR was reloaded
+         */
+        public String getDisplayName() {
+            return displayName;
         }
     }
 

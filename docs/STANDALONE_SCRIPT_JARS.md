@@ -343,13 +343,31 @@ A healthy JAR contains:
    `:microbot-example-scripts:installLocal`.
 4. Add a second **Gradle** run configuration for `:client:run`.
 5. Debug the client and set breakpoints in the plugin. After `installLocal`
-   replaces the JAR, click the refresh button beside the script search field.
+   replaces the JAR, open the start-script dialog — it reloads changed JARs
+   automatically (see below) — or click the refresh button beside the script
+   search field.
 
-The refresh action stops and unloads every JAR from `microbot-plugins`, closes
-its class loader, and loads a fresh runtime copy. Reloaded plugins remain
-disabled and must be enabled manually. Plugin configuration is preserved, but
-in-memory script state is not. Side-loaded plugins must not set
-`alwaysOn = true` because a refreshed plugin must remain stopped.
+### Reload semantics
+
+There are two ways a side-loaded JAR is reloaded, and they behave differently.
+
+**Automatic reload (start-script dialog).** Every time the play button in the
+client title bar opens the script picker, the picker first reloads only the
+JARs whose file on disk changed since they were loaded (compared by size,
+timestamp and SHA-256). Unchanged JARs keep their current class loader, JARs
+that appeared are loaded, and JARs that disappeared are unloaded. A JAR whose
+script is currently running is left alone — reloading it would stop the
+script, so the new build only takes effect once the script is stopped (the
+picker says so in its status line). A JAR that fails to load is dropped and
+reported in the dialog.
+
+**Manual refresh (the refresh button).** Unloads **every** JAR from
+`microbot-plugins`, closes its class loader, and loads a fresh runtime copy —
+including the JAR of a running script, which is stopped in the process.
+Reloaded plugins remain disabled and must be enabled manually. Plugin
+configuration is preserved, but in-memory script state is not. Side-loaded
+plugins must not set `alwaysOn = true` because a refreshed plugin must remain
+stopped.
 
 The client loads a shadow copy under `~/.runelite/cache/microbot-plugin-runtime/`
 so the source JAR can be overwritten while the client is running. If a script
@@ -360,10 +378,16 @@ Plugins marked `isExternal = true` are launched from the play button in the
 client title bar. The selection dialog lists only external plugins owned by the
 Microbot side-load manager; native Microbot plugins remain in the Installed
 sidebar. While one external script is running, the play button is replaced by
-stop and restart controls. Restart unloads only the selected script JAR, loads
-the current source JAR, and starts the matching plugin class again. The client
-remembers the most recently started external script for the current session, so
-the restart control remains available after that script is stopped manually.
+stop and restart controls. Restart looks at the JAR on disk: when it is
+unchanged, the running script is stopped and started again on the class loader
+that is already loaded; when the JAR changed, was renamed or was removed, the
+side-load directory is brought up to date and the script carrying the same
+display name as the last started one is started instead. Repackaging a script
+under a different JAR file name therefore keeps working as long as the
+`@PluginDescriptor` `name` stays the same — the display name is what identifies
+the script across reloads. The client remembers the most recently started
+external script for the current session, so the restart control remains
+available after that script is stopped manually.
 
 ---
 
@@ -373,8 +397,9 @@ the restart control remains available after that script is stopped manually.
 
 1. Bump `version = "1.0.1"` in `@PluginDescriptor`.
 2. Rebuild: `./gradlew :microbot-example-scripts:installLocal`
-3. Click the refresh button beside the script search field, then enable the
-   updated plugin manually.
+3. Open the start-script dialog — it reloads the changed JAR automatically — then
+   enable the updated plugin manually. Use the refresh button instead if you want
+   to force a full reload of every JAR.
 
 ### Remove
 
@@ -382,7 +407,8 @@ the restart control remains available after that script is stopped manually.
 rm ~/.runelite/microbot-plugins/StandaloneExamplePlugin.jar
 ```
 
-Then click the refresh button. The plugin disappears from the config panel.
+Then open the start-script dialog (or click the refresh button). The plugin
+disappears from the config panel.
 
 ### Clean rebuild
 
