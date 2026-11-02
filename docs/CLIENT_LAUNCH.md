@@ -514,3 +514,4 @@ java -Dfile.encoding=UTF-8 -Xmx2G -jar client-<version>-SNAPSHOT-shaded.jar --di
 - **自动化测试循环：** `docs/AGENTIC_TESTING_LOOP.md`
 - **脚本开发规则：** `runelite-client/src/main/java/net/runelite/client/plugins/microbot/AGENTS.md`
 - **架构文档：** `docs/ARCHITECTURE.md`
+- **`--index` 自定义窗口标题实现：** `docs/WINDOW_TITLE_INDEX.md`

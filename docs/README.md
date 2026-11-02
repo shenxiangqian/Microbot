@@ -10,6 +10,7 @@ This is the documentation entry point. Keep it short: it should route readers to
 - Local setup and build commands: [development.md](development.md)
 - Detection hardening plan: [DETECTION_HARDENING.md](DETECTION_HARDENING.md)
 - Runtime architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
+- `--index` window title override (portable implementation guide): [WINDOW_TITLE_INDEX.md](WINDOW_TITLE_INDEX.md)
 - Queryable cache guide: [../runelite-client/src/main/java/net/runelite/client/plugins/microbot/api/QUERYABLE_API.md](../runelite-client/src/main/java/net/runelite/client/plugins/microbot/api/QUERYABLE_API.md)
 - Entity utility gotchas: [entity-guides/README.md](entity-guides/README.md)
 - Architecture decisions: [decisions/](decisions/)

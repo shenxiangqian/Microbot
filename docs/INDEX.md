@@ -9,6 +9,7 @@ This is the documentation entry point. Keep it short: it should route readers to
 ## For Developers
 - Local setup and build commands: [development.md](development.md)
 - Runtime architecture: [ARCHITECTURE.md](ARCHITECTURE.md)
+- `--index` window title override (portable implementation guide): [WINDOW_TITLE_INDEX.md](WINDOW_TITLE_INDEX.md)
 - **[脚本开发 API 完整指南 (中文)](SCRIPT_API_GUIDE.md)** — Complete Chinese script development guide with quick start, core APIs, patterns, and best practices
 - Queryable cache guide: [../runelite-client/src/main/java/net/runelite/client/plugins/microbot/api/QUERYABLE_API.md](../runelite-client/src/main/java/net/runelite/client/plugins/microbot/api/QUERYABLE_API.md)
 - Entity utility gotchas: [entity-guides/README.md](entity-guides/README.md)
