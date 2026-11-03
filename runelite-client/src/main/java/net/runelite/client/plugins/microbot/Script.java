@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.Widget;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.plugins.microbot.util.Global;
 import net.runelite.client.plugins.microbot.agentserver.handler.ScriptHeartbeatRegistry;
 import net.runelite.client.plugins.microbot.diagnostics.FlightRecorder;
@@ -18,6 +19,8 @@ import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 import net.runelite.client.plugins.microbot.util.walker.recovery.CantReachTargetRecovery;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ScheduledExecutorService;
@@ -26,6 +29,8 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Base class for Microbot automation scripts.
@@ -42,7 +47,40 @@ public abstract class Script extends Global implements IScript {
         }
     }
 
-    protected ScheduledExecutorService scheduledExecutorService = new ScheduledThreadPoolExecutor(10,
+    /**
+     * One start/stop cycle of a script. Every task scheduled through {@link #scheduledExecutorService}
+     * while the cycle is open belongs to it, so stopping the script stops all of them - including
+     * the ones the script scheduled itself and never tracked in a field.
+     */
+    private static final class Batch
+    {
+        private final long id;
+        private final Set<ScheduledFuture<?>> futures = ConcurrentHashMap.newKeySet();
+        private volatile boolean closed;
+
+        private Batch(long id)
+        {
+            this.id = id;
+        }
+    }
+
+    /**
+     * Thrown inside a task whose batch was closed. A periodic task that fails this way is not run
+     * again, which is how tasks of a previous start/stop cycle are retired.
+     */
+    private static final class BatchClosedException extends RuntimeException
+    {
+        private BatchClosedException()
+        {
+            super(null, null, false, false);
+        }
+    }
+
+    private final AtomicLong batchCounter = new AtomicLong();
+    private final AtomicReference<Batch> currentBatch = new AtomicReference<>();
+    private final ThreadLocal<Batch> runningBatch = new ThreadLocal<>();
+
+    private final ScheduledThreadPoolExecutor scriptExecutor = new ScheduledThreadPoolExecutor(10,
         new ThreadFactory() {
             private final AtomicInteger threadNumber = new AtomicInteger(1);
             @Override
@@ -64,21 +102,80 @@ public abstract class Script extends Global implements IScript {
                     long delay, TimeUnit unit) {
                 // Announce before a zero-delay loop can report a terminal supply failure.
                 announceStart();
-                return super.scheduleWithFixedDelay(command, initialDelay, delay, unit);
+                Batch batch = openBatch();
+                return track(batch,
+                        super.scheduleWithFixedDelay(guard(batch, command), initialDelay, delay, unit));
             }
 
             @Override
             public ScheduledFuture<?> scheduleAtFixedRate(Runnable command, long initialDelay,
                     long period, TimeUnit unit) {
                 announceStart();
-                return super.scheduleAtFixedRate(command, initialDelay, period, unit);
+                Batch batch = openBatch();
+                return track(batch,
+                        super.scheduleAtFixedRate(guard(batch, command), initialDelay, period, unit));
+            }
+
+            @Override
+            public ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
+                Batch batch = openBatch();
+                return track(batch, super.schedule(guard(batch, command), delay, unit));
             }
         };
+
+    protected ScheduledExecutorService scheduledExecutorService = scriptExecutor;
     protected ScheduledFuture<?> scheduledFuture;
     protected ScheduledFuture<?> mainScheduledFuture;
 
     protected Script() {
         ScriptLifecycleRegistry.register(this);
+    }
+
+    /**
+     * Returns the batch new tasks join. A task scheduled from inside a script task belongs to the
+     * batch of that task, so a task of a closed cycle cannot revive work in a later one. A batch is
+     * opened again only when the script is started again.
+     */
+    private Batch openBatch() {
+        Batch callerBatch = runningBatch.get();
+        if (callerBatch != null) {
+            return callerBatch;
+        }
+        Batch batch = currentBatch.get();
+        if (batch == null || batch.closed) {
+            batch = new Batch(batchCounter.incrementAndGet());
+            currentBatch.set(batch);
+            log.debug("Script {} started batch {}", getClass().getSimpleName(), batch.id);
+        }
+        return batch;
+    }
+
+    private ScheduledFuture<?> track(Batch batch, ScheduledFuture<?> future) {
+        batch.futures.add(future);
+        if (batch.closed) {
+            // The batch was closed while the task was being submitted.
+            future.cancel(false);
+        }
+        return future;
+    }
+
+    /**
+     * Wraps a task so that it stops as soon as its batch is closed, and so that the batch it
+     * belongs to can be resolved from inside the task.
+     */
+    private Runnable guard(Batch batch, Runnable command) {
+        return () -> {
+            Batch previous = runningBatch.get();
+            runningBatch.set(batch);
+            try {
+                if (batch.closed) {
+                    throw new BatchClosedException();
+                }
+                command.run();
+            } finally {
+                runningBatch.set(previous);
+            }
+        };
     }
 
     /**
@@ -94,15 +191,61 @@ public abstract class Script extends Global implements IScript {
     /**
      * Cancel scheduled tasks, clear shared state, and reset helpers.
      * Safe to call multiple times; no-ops if already shut down.
+     *
+     * <p>Only the batch the caller belongs to is closed. A task of an earlier start/stop cycle that
+     * calls this from its error handler therefore cannot stop the cycle that is running now.</p>
      */
     public void shutdown() {
+        Batch batch = runningBatch.get();
+        if (batch == null) {
+            batch = currentBatch.get();
+        }
+        if (batch == null) {
+            startAnnounced.set(false);
+            return;
+        }
+        if (batch.closed) {
+            // Already stopped, or a task of an earlier cycle calling shutdown: leave the running
+            // cycle alone.
+            return;
+        }
+
+        boolean hadLiveTasks = batch.futures.stream().anyMatch(future -> !future.isDone());
+        batch.closed = true;
+        // Cancel with interrupt: a script spends most of its time inside one call - a web walk can
+        // run for minutes - and cancelling without interrupting would let that call run to the end,
+        // so the character keeps moving long after the script was stopped. The interrupt ends the
+        // running call right away. It cannot stop a later cycle: the interrupted task resolves to
+        // this batch, which is already closed, so its error handler is a no-op.
+        for (ScheduledFuture<?> future : batch.futures) {
+            future.cancel(true);
+        }
+        batch.futures.clear();
+
+        if (batch != currentBatch.get()) {
+            // A task of an earlier cycle: retire that cycle only.
+            return;
+        }
+        currentBatch.set(null);
         startAnnounced.set(false);
         ScriptHeartbeatRegistry.remove(this.getClass().getName());
-        if (mainScheduledFuture != null && !mainScheduledFuture.isDone()) {
-            mainScheduledFuture.cancel(true);
+        // A pending client thread task - a path calculation for example - would keep the character
+        // moving after the script was stopped, so it is cancelled as well.
+        ClientThread clientThread = Microbot.getClientThread();
+        if (clientThread != null) {
+            clientThread.cancelScheduledTask(this);
+        }
+        if (hadLiveTasks) {
+            resetSharedState();
+        }
+    }
+
+    /**
+     * Releases the state a running script shares with the rest of the client.
+     */
+    private void resetSharedState() {
+        try {
             Rs2PathApi.exit();
-            if (Microbot.getClientThread().scheduledFuture != null)
-                Microbot.getClientThread().scheduledFuture.cancel(true);
             initialPlayerLocation = null;
             // Backstop for a script stopped between a hold and its release. Fires inconsistently:
             // most scripts catch-and-continue without reaching here.
@@ -111,10 +254,30 @@ public abstract class Script extends Global implements IScript {
             CantReachTargetRecovery.reset();
             Rs2Walker.disableTeleports = false;
             Microbot.getSpecialAttackConfigs().reset();
+        } catch (Throwable ex) {
+            log.warn("Error resetting shared state for script {}", getClass().getSimpleName(), ex);
         }
-        if (scheduledFuture != null && !scheduledFuture.isDone()) {
-            scheduledFuture.cancel(true);
-        }
+    }
+
+    /**
+     * Waits until no task of this script is running any more.
+     *
+     * @return {@code true} when the executor went idle within the timeout
+     */
+    public boolean awaitIdle(long timeoutMillis) {
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
+        do {
+            if (scriptExecutor.getActiveCount() == 0) {
+                return true;
+            }
+            try {
+                Thread.sleep(20L);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        } while (System.nanoTime() < deadline);
+        return scriptExecutor.getActiveCount() == 0;
     }
 
     /**
@@ -130,6 +293,10 @@ public abstract class Script extends Global implements IScript {
         } catch (Throwable ex) {
             log.warn("Error shutting down script {} during unload", getClass().getSimpleName(), ex);
         }
+
+        // The shutdown above already interrupted the running task; this is the grace period for it
+        // to unwind and release the executor.
+        awaitIdle(Math.max(1L, Math.min(timeoutMillis / 4, 500L)));
 
         scheduledExecutorService.shutdownNow();
         try {

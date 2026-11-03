@@ -73,4 +73,26 @@ public class SideLoadJarFingerprintTest {
 
         assertTrue(MicrobotPluginManager.hasJarChanged(fingerprint, jar));
     }
+
+    @Test
+    public void reloadAllReloadsAnUnchangedJar() throws IOException {
+        File jar = temporaryFolder.newFile("script.jar");
+        Files.write(jar.toPath(), "first build".getBytes(StandardCharsets.UTF_8));
+        SideLoadJarFingerprint fingerprint = SideLoadJarFingerprint.of(jar);
+
+        assertFalse(MicrobotPluginManager.needsReload(fingerprint, jar, false));
+        assertTrue(MicrobotPluginManager.needsReload(fingerprint, jar, true));
+    }
+
+    @Test
+    public void reloadAllReloadsAChangedJar() throws IOException {
+        File jar = temporaryFolder.newFile("script.jar");
+        Files.write(jar.toPath(), "first build".getBytes(StandardCharsets.UTF_8));
+        SideLoadJarFingerprint fingerprint = SideLoadJarFingerprint.of(jar);
+
+        Files.write(jar.toPath(), "second build with a different length".getBytes(StandardCharsets.UTF_8));
+
+        assertTrue(MicrobotPluginManager.needsReload(fingerprint, jar, false));
+        assertTrue(MicrobotPluginManager.needsReload(fingerprint, jar, true));
+    }
 }

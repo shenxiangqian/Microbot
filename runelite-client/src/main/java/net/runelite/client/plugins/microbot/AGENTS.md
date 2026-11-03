@@ -26,6 +26,7 @@ Check `docs/entity-guides/README.md` before modifying anything under `util/` —
 - **Never report success you did not observe.** A helper returning `true` unconditionally after a wait leaves its caller no way to find out.
 - **A helper spanning more than one game action exposes a step.** The game is a remote asynchronous server, so no sequence of actions can be made atomic; the only option is re-deriving from observed state, which the 600ms `Script.run()` tick already does. A helper blocking for seconds is reimplementing that loop inside one iteration of it.
 - Copy `Rs2Walker`: `walkStep` issues one click and returns a `WalkerState`, with the blocking `walkTo` built on top. The enum matters as much as the split, since `if (walkStep(...))` does not compile while `if (someBooleanHelper(...))` silently discards the answer.
+- **An interrupted wait throws.** `Global.sleep*` rethrows the interruption as `ScriptInterruptedException` (the `InterruptedException` is kept as the cause) instead of returning quietly — a wait that swallowed it hid the stop from the script, and a loop over such a wait kept running after the script was stopped. Catch it around the loop body and return; never let a script loop keep running on an interrupt.
 
 ## Scripts
 - Extend `Script` (or `StateMachineScript<S>` for 3+ phase scripts — see `statemachine/AGENTS.md`).

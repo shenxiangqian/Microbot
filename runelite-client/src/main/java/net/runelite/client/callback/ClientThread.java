@@ -47,6 +47,11 @@ public class ClientThread
 
 	protected ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor();
 	public Future<?> scheduledFuture;
+	/**
+	 * Owner of {@link #scheduledFuture}. Framework tasks (path finding, tile reachability) are
+	 * owned by nobody, so a script stopping never cancels them.
+	 */
+	private volatile Object scheduledFutureOwner;
 
 	private static final long TIMEOUT_WARNING_INTERVAL_NANOS = TimeUnit.SECONDS.toNanos(30);
 	private final AtomicLong lastTimeoutWarningNanos = new AtomicLong();
@@ -129,9 +134,44 @@ public class ClientThread
 	 */
 	@SneakyThrows
 	public void runOnSeperateThread(Callable<?> method) {
+		runOnSeperateThread(method, null);
+	}
+
+	/**
+	 * Runs a method on the client thread, remembering which owner submitted it.
+	 *
+	 * @param owner token that may cancel the task again, or {@code null} for a task that no script
+	 *             is allowed to cancel
+	 */
+	@SneakyThrows
+	public void runOnSeperateThread(Callable<?> method, Object owner) {
 		if (scheduledFuture != null && !scheduledFuture.isDone()) return;
+		scheduledFutureOwner = owner;
 		scheduledFuture = scheduledExecutorService.submit(() -> method.call());
 	}
+
+    /**
+     * Cancels the pending client thread task, but only when it belongs to {@code owner}.
+     *
+     * <p>A task that has no owner belongs to nobody in particular, so any script may cancel it -
+     * that is the long standing behaviour. A task that has an owner may only be cancelled by that
+     * owner, so a script that stops does not cancel the task of another script.</p>
+     *
+     * @return {@code true} when a task was cancelled
+     */
+    public boolean cancelScheduledTask(Object owner) {
+        Future<?> future = scheduledFuture;
+        if (future == null || future.isDone()) {
+            return false;
+        }
+        Object taskOwner = scheduledFutureOwner;
+        if (owner != null && taskOwner != null && taskOwner != owner) {
+            return false;
+        }
+        scheduledFuture = null;
+        scheduledFutureOwner = null;
+        return future.cancel(true);
+    }
 
 
 	/**

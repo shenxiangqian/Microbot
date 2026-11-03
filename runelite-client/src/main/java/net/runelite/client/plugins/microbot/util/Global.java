@@ -2,6 +2,7 @@ package net.runelite.client.plugins.microbot.util;
 
 import lombok.SneakyThrows;
 import net.runelite.client.plugins.microbot.Microbot;
+import net.runelite.client.plugins.microbot.ScriptInterruptedException;
 import net.runelite.client.plugins.microbot.util.antiban.SessionFatigue;
 import net.runelite.client.plugins.microbot.util.input.InputArbiter;
 import net.runelite.client.plugins.microbot.util.math.Rs2Random;
@@ -82,9 +83,12 @@ public class Global {
             long slice = Math.min(remaining, SLEEP_SLICE_MS);
             try {
                 Thread.sleep(slice);
-            } catch (InterruptedException ignored) {
+            } catch (InterruptedException interrupted) {
                 Thread.currentThread().interrupt();
-                return;
+                // The interrupt is the stop signal: the script has to leave its loop, otherwise it
+                // keeps running after it was stopped. Returning quietly hid the stop from the
+                // script, and the next wait threw again right away, so the loop spun hot.
+                throw new ScriptInterruptedException(interrupted);
             }
             remaining -= slice;
         }
@@ -177,7 +181,9 @@ public class Global {
                 sleep(nextPollIntervalMs());
             }
         } catch (Exception e) {
-            Microbot.logStackTrace("Global Sleep: ", e);
+            if (!Thread.currentThread().isInterrupted()) {
+                Microbot.logStackTrace("Global Sleep: ", e);
+            }
         }
         return false;
     }
@@ -196,7 +202,9 @@ public class Global {
                 sleep(sleepMillis);
             }
         } catch (Exception e) {
-            Microbot.logStackTrace("Global Sleep: ", e);
+            if (!Thread.currentThread().isInterrupted()) {
+                Microbot.logStackTrace("Global Sleep: ", e);
+            }
         }
         return false;
     }
@@ -215,7 +223,9 @@ public class Global {
                 sleep(nextPollIntervalMs());
             } while (!Thread.currentThread().isInterrupted() && System.currentTimeMillis() - startTime < 5000);
         } catch (Exception e) {
-            Microbot.logStackTrace("Global Sleep: ", e);
+            if (!Thread.currentThread().isInterrupted()) {
+                Microbot.logStackTrace("Global Sleep: ", e);
+            }
         }
         return false;
     }
@@ -234,7 +244,9 @@ public class Global {
                 sleep(time);
             } while (!Thread.currentThread().isInterrupted() && System.currentTimeMillis() - startTime < timeout);
         } catch (Exception e) {
-            Microbot.logStackTrace("Global Sleep: ", e);
+            if (!Thread.currentThread().isInterrupted()) {
+                Microbot.logStackTrace("Global Sleep: ", e);
+            }
         }
         return false;
     }
@@ -256,7 +268,9 @@ public class Global {
                 sleep(time);
             } while (!Thread.currentThread().isInterrupted() && System.currentTimeMillis() - startTime < timeout);
         } catch (Exception e) {
-            Microbot.logStackTrace("Global Sleep: ", e);
+            if (!Thread.currentThread().isInterrupted()) {
+                Microbot.logStackTrace("Global Sleep: ", e);
+            }
         }
         return false;
     }
@@ -281,7 +295,9 @@ public class Global {
                 done = Microbot.getClientThread().runOnClientThreadOptional(awaitedCondition::getAsBoolean).orElse(false);
             } while (!done && !Thread.currentThread().isInterrupted() && System.currentTimeMillis() - startTime < time);
         } catch (Exception e) {
-            Microbot.logStackTrace("Global Sleep: ", e);
+            if (!Thread.currentThread().isInterrupted()) {
+                Microbot.logStackTrace("Global Sleep: ", e);
+            }
         }
     }
 

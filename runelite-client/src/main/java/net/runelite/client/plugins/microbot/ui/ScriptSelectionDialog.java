@@ -149,8 +149,9 @@ final class ScriptSelectionDialog extends JDialog {
      * Reloads the JARs that changed on disk before the list is filled.
      *
      * <p>The list is built from the class loaders that are currently active, so a build that was
-     * uploaded after the client started would otherwise never show up. Only changed JARs are
-     * reloaded; a JAR whose script is running stays as it is.</p>
+     * uploaded after the client started would otherwise never show up. Every JAR is reloaded, not
+     * only the changed ones, so the list always reflects what is on disk. A JAR whose script is
+     * running stays as it is.</p>
      */
     private void reloadChangedScripts() {
         refreshInProgress = true;
@@ -160,7 +161,7 @@ final class ScriptSelectionDialog extends JDialog {
         countLabel.setText("Reloading script JARs...");
         updateActions();
 
-        microbotPluginManager.reloadChangedSideLoadedPlugins().whenComplete((result, error) ->
+        microbotPluginManager.reloadAllSideLoadedPlugins().whenComplete((result, error) ->
                 SwingUtilities.invokeLater(() -> finishRefresh(result, error)));
     }
 
