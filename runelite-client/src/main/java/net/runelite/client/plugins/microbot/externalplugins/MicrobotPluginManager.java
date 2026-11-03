@@ -70,6 +70,7 @@ import java.io.InputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.net.Proxy;
 import java.net.ProxySelector;
+import java.net.URLClassLoader;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
@@ -107,6 +108,7 @@ public class MicrobotPluginManager {
     private final MicrobotApi microbotApi;
 
     private final Map<String, String> blockedPlugins = new ConcurrentHashMap<>();
+    private final Map<String, URLClassLoader> loaders = new ConcurrentHashMap<>();
 
     private final Map<String, SideLoadedPluginDeployment> deployments = new ConcurrentHashMap<>();
     private final Set<String> reloadBlockedInternalNames = ConcurrentHashMap.newKeySet();
