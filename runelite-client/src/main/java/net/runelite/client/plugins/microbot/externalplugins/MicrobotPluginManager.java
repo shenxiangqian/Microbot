@@ -77,6 +77,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
@@ -208,6 +209,25 @@ public class MicrobotPluginManager {
 
     public Map<String, MicrobotPluginManifest> getManifestMap() {
         return Collections.unmodifiableMap(manifestMap);
+    }
+
+    public Optional<MicrobotPluginManifest> findManifest(String name) {
+        return manifestMap.values().stream()
+                .filter(manifest -> name.equalsIgnoreCase(manifest.getInternalName())
+                        || name.equalsIgnoreCase(manifest.getDisplayName()))
+                .findFirst();
+    }
+
+    public boolean isLoaded(String internalName) {
+        return getInstalledPlugins().stream()
+                .anyMatch(plugin -> plugin.getClass().getSimpleName().equalsIgnoreCase(internalName));
+    }
+
+    public boolean isLoadedFromHub(String internalName) {
+        URLClassLoader loader = loaders.get(internalName);
+        return loader != null && getInstalledPlugins().stream()
+                .anyMatch(plugin -> plugin.getClass().getSimpleName().equalsIgnoreCase(internalName)
+                        && plugin.getClass().getClassLoader() == loader);
     }
 
     /**
@@ -1922,8 +1942,8 @@ public class MicrobotPluginManager {
      *
      * @param manifest the manifest of the plugin to install
      */
-    public void installPlugin(MicrobotPluginManifest manifest, @Nullable String versionOverride) {
-        executor.submit(() -> install(manifest, versionOverride));
+    public Future<?> installPlugin(MicrobotPluginManifest manifest, @Nullable String versionOverride) {
+        return executor.submit(() -> install(manifest, versionOverride));
     }
 
     /**
@@ -1931,8 +1951,8 @@ public class MicrobotPluginManager {
      *
      * @param manifest the manifest of the plugin to remove
      */
-    public void removePlugin(MicrobotPluginManifest manifest) {
-        executor.submit(() -> remove(manifest));
+    public Future<?> removePlugin(MicrobotPluginManifest manifest) {
+        return executor.submit(() -> remove(manifest));
     }
 
     /**
@@ -2066,10 +2086,8 @@ public class MicrobotPluginManager {
      * Submits a plugin refresh task to the executor.
      * This will reload plugins based on the current profile's installed plugins list.
      */
-    public void updatePlugin(MicrobotPluginManifest manifest, @Nullable String versionOverride) {
-        executor.submit(() -> {
-            update(manifest, versionOverride);
-        });
+    public Future<?> updatePlugin(MicrobotPluginManifest manifest, @Nullable String versionOverride) {
+        return executor.submit(() -> update(manifest, versionOverride));
     }
 
     /**

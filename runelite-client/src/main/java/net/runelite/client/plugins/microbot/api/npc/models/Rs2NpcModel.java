@@ -212,16 +212,15 @@ public class Rs2NpcModel extends Rs2ActorModel implements IEntity
                                 Microbot.cantReachTargetRetries);
                         return false;
                     }
-                    final WorldPoint npcWorldPoint = getWorldLocation();
+                    final WorldPoint npcWorldPoint = CantReachTargetRecovery.templateLocation(getWorldLocation());
                     if (npcWorldPoint == null) {
                         log.error("Error interacting with NPC '{}' for action '{}': WorldPoint is null", npcName, action);
                         return false;
                     }
-                    Microbot.cantReachTargetRetries++;
+                    CantReachTargetRecovery.countAttempt();
                     if (CantReachTargetRecovery.walkTo(npcWorldPoint, 2)) {
                         Microbot.pauseAllScripts.compareAndSet(true, false);
-                        Microbot.cantReachTarget = false;
-                        Microbot.cantReachTargetRetries = 0;
+                        CantReachTargetRecovery.reset();
                         // fall through and click from beside it
                     } else {
                         return false;

@@ -660,18 +660,17 @@ public class Rs2Npc {
                             Microbot.cantReachTargetRetries);
                     return false;
                 }
-                final WorldPoint npcWorldPoint = npc.getWorldLocation();
+                final WorldPoint npcWorldPoint = CantReachTargetRecovery.templateLocation(npc.getWorldLocation());
                 if (npcWorldPoint == null) {
                     log.error("Error interacting with NPC '{}' for action '{}': WorldPoint is null", npc.getName(), action);
                     return false;
                 }
-                Microbot.cantReachTargetRetries++;
+                int attempt = CantReachTargetRecovery.countAttempt();
                 log.info("[Interact] can't-reach recovery: walking to NPC '{}' at {} (attempt {})",
-                        npc.getName(), npcWorldPoint, Microbot.cantReachTargetRetries);
+                        npc.getName(), npcWorldPoint, attempt);
                 if (CantReachTargetRecovery.walkTo(npcWorldPoint, 2)) {
                     Microbot.pauseAllScripts.compareAndSet(true, false);
-                    Microbot.cantReachTarget = false;
-                    Microbot.cantReachTargetRetries = 0;
+                    CantReachTargetRecovery.reset();
                     // fall through and click from beside it
                 } else {
                     return false;

@@ -25,6 +25,7 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.microbot.accountselector.TerminalLogoutHold;
 import net.runelite.client.plugins.microbot.alerts.ClientAlertReporter;
+import net.runelite.client.plugins.microbot.bans.BanTelemetry;
 import net.runelite.client.plugins.microbot.alerts.DashboardSync;
 import net.runelite.client.plugins.microbot.alerts.DeviceLinkFlow;
 import net.runelite.client.plugins.microbot.diagnostics.BugReportTracker;
@@ -173,6 +174,9 @@ public class MicrobotPlugin extends Plugin
 	private ClientAlertReporter clientAlertReporter;
 
 	@Inject
+	private BanTelemetry banTelemetry;
+
+	@Inject
 	private DashboardSync dashboardSync;
 
 	@Inject
@@ -297,6 +301,9 @@ public class MicrobotPlugin extends Plugin
 		flightRecorder.stop();
 		eventBus.unregister(clientAlertReporter);
 		clientAlertReporter.stop();
+		eventBus.unregister(banTelemetry);
+		banTelemetry.stop();
+		eventBus.unregister(dashboardSync);
 		dashboardSync.stop();
 		eventBus.unregister(deviceLinkFlow);
 		deviceLinkFlow.stop();
