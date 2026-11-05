@@ -44,8 +44,10 @@ import net.runelite.client.plugins.PluginInstantiationException;
 import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.plugins.microbot.MicrobotConfig;
 import net.runelite.client.plugins.microbot.externalplugins.MicrobotPluginManager;
+import net.runelite.client.plugins.microbot.externalplugins.MicrobotPluginManifest;
 import net.runelite.client.plugins.microbot.ui.search.MicrobotPluginSearch;
 import net.runelite.client.ui.ColorScheme;
+import net.runelite.client.ui.ContainableFrame;
 import net.runelite.client.ui.DynamicGridLayout;
 import net.runelite.client.ui.PluginPanel;
 import net.runelite.client.ui.components.IconTextField;
@@ -63,17 +65,21 @@ import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @Slf4j
 @Singleton
 public class MicrobotPluginListPanel extends MicrobotPluginPanel {
+    private static final long BLOCKED_NOTICE_WAIT_MS = 300_000;
     static final int LIST_VIEW_WIDTH = PluginPanel.PANEL_WIDTH - PluginPanel.SCROLLBAR_WIDTH;
     static final int LIST_ITEM_WIDTH = LIST_VIEW_WIDTH - 20;
 
@@ -127,6 +133,7 @@ public class MicrobotPluginListPanel extends MicrobotPluginPanel {
             ExternalPluginManager externalPluginManager,
             EventBus eventBus,
             Provider<MicrobotConfigPanel> configPanelProvider,
+            Provider<LocalPluginsPanel> localPluginsPanelProvider,
             MicrobotBugReporter bugReporter) {
         super(false);
 
@@ -279,6 +286,7 @@ public class MicrobotPluginListPanel extends MicrobotPluginPanel {
 
         mainPanel.removeAll();
         refresh();
+        SwingUtilities.invokeLater(this::showBlockedPluginsNotice);
     }
 
     public void addFakePlugin(MicrobotPluginConfigurationDescriptor... descriptor) {

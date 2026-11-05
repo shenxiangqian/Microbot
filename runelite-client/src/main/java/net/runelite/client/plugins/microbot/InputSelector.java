@@ -11,6 +11,7 @@ import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.ClientUI;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.util.ImageUtil;
+import org.slf4j.event.Level;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -22,6 +23,9 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelEvent;
 import java.awt.image.BufferedImage;
+import java.awt.Color;
+import java.awt.Graphics2D;
+import javax.swing.SwingUtilities;
 
 @Singleton
 public class InputSelector {

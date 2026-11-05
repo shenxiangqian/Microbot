@@ -30,6 +30,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Locale;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -669,6 +670,12 @@ public final class LoginManager {
                 log.warn("Failed to find world {}", worldNumber);
                 return false;
             }
+            GameState gameState = Microbot.getClient().getGameState();
+            if (gameState != GameState.LOGIN_SCREEN) {
+                log.warn("Not switching to world {} - world switching is only possible from the login screen (client is currently: {})",
+                        worldNumber, describe(gameState));
+                return false;
+            }
             boolean changed = Microbot.getClientThread()
                     .runOnClientThreadOptional(() -> changeWorld(Microbot.getClient(), world))
                     .orElse(false);
@@ -682,7 +689,14 @@ public final class LoginManager {
         }
     }
 
+    private static String describe(GameState gameState) {
+        return gameState == null ? "unknown" : gameState.name().toLowerCase(Locale.ROOT).replace('_', ' ');
+    }
+
     private static boolean changeWorld(Client client, net.runelite.http.api.worlds.World world) {
+        if (client.getGameState() != GameState.LOGIN_SCREEN) {
+            return false;
+        }
         final net.runelite.api.World rsWorld = client.createWorld();
         if (rsWorld == null) {
             return false;

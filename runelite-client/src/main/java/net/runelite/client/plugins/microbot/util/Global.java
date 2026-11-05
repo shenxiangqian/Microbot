@@ -3,6 +3,7 @@ package net.runelite.client.plugins.microbot.util;
 import lombok.SneakyThrows;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.ScriptInterruptedException;
+import net.runelite.client.plugins.microbot.ScriptPauseController;
 import net.runelite.client.plugins.microbot.util.antiban.SessionFatigue;
 import net.runelite.client.plugins.microbot.util.input.InputArbiter;
 import net.runelite.client.plugins.microbot.util.math.Rs2Random;
@@ -16,14 +17,19 @@ public class Global {
     static ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(10);
 
     /**
-     * Every wait here treats a human takeover as terminal.
+     * Manual pause parks background waits without losing their stack or timeout budget.
+     * Automatic human takeover remains terminal, as before.
      *
      * <p>Deliberately not terminal on {@code pauseAllScripts}. That flag doubles as a transient
      * guard a script raises around its own action sequence and then keeps waiting inside; see
      * {@code Rs2GroundItem.runWhilePaused}. Making these waits no-ops there would break it.
      */
     private static boolean humanOwnsInput() {
-        return InputArbiter.isHuman();
+        return !ScriptPauseController.awaitResume() || InputArbiter.isHuman();
+    }
+
+    private static long activeTimeMillis() {
+        return TimeUnit.NANOSECONDS.toMillis(ScriptPauseController.activeTimeNanos());
     }
 
     private static final int SLEEP_SLICE_MS = 50;
@@ -54,7 +60,7 @@ public class Global {
         final AtomicBoolean finished = new AtomicBoolean();
 
         Runnable poll = () -> {
-            if (finished.get()) return;
+            if (finished.get() || ScriptPauseController.isPaused()) return;
             boolean human = humanOwnsInput();
             if (!human && !awaitedCondition.getAsBoolean()) return;
             if (!finished.compareAndSet(false, true)) return;
@@ -90,6 +96,8 @@ public class Global {
                 // script, and the next wait threw again right away, so the loop spun hot.
                 throw new ScriptInterruptedException(interrupted);
             }
+            // A pause can begin during the last slice, including a short single-slice wait.
+            if (humanOwnsInput()) return;
             remaining -= slice;
         }
     }
@@ -143,7 +151,7 @@ public class Global {
         if (Microbot.getClient().isClientThread()) return null;
         boolean done;
         T methodResponse;
-        final long endTime = System.currentTimeMillis()+timeoutMillis;
+        final long endTime = activeTimeMillis()+timeoutMillis;
         do {
             if (Thread.currentThread().isInterrupted() || humanOwnsInput()) {
                 return null;
@@ -151,7 +159,7 @@ public class Global {
             methodResponse = method.call();
             done = methodResponse != null;
             sleep(sleepMillis);
-        } while (!done && !Thread.currentThread().isInterrupted() && System.currentTimeMillis() < endTime);
+        } while (!done && !Thread.currentThread().isInterrupted() && activeTimeMillis() < endTime);
         return methodResponse;
     }
 
@@ -173,9 +181,9 @@ public class Global {
      */
     public static boolean sleepUntil(BooleanSupplier awaitedCondition, int time) {
         if (Microbot.getClient().isClientThread()) return false;
-        long startTime = System.currentTimeMillis();
+        long startTime = activeTimeMillis();
         try {
-            while (!Thread.currentThread().isInterrupted() && System.currentTimeMillis() - startTime < time) {
+            while (!Thread.currentThread().isInterrupted() && activeTimeMillis() - startTime < time) {
                 if (humanOwnsInput()) return false;
                 if (awaitedCondition.getAsBoolean()) return true;
                 sleep(nextPollIntervalMs());
@@ -190,10 +198,10 @@ public class Global {
 
     public static boolean sleepUntil(BooleanSupplier awaitedCondition, Runnable action, long timeoutMillis, int sleepMillis) {
         if (Microbot.getClient().isClientThread()) return false;
-        long startTime = System.nanoTime();
+        long startTime = ScriptPauseController.activeTimeNanos();
         long timeoutNanos = TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
         try {
-            while (!Thread.currentThread().isInterrupted() && System.nanoTime() - startTime < timeoutNanos) {
+            while (!Thread.currentThread().isInterrupted() && ScriptPauseController.activeTimeNanos() - startTime < timeoutNanos) {
                 if (humanOwnsInput()) return false;
                 if (awaitedCondition.getAsBoolean()) {
                     return true;
@@ -211,7 +219,7 @@ public class Global {
 
     public static boolean sleepUntilTrue(BooleanSupplier awaitedCondition) {
         if (Microbot.getClient().isClientThread()) return false;
-        long startTime = System.currentTimeMillis();
+        long startTime = activeTimeMillis();
         try {
             do {
                 if (Thread.currentThread().isInterrupted() || humanOwnsInput()) {
@@ -221,7 +229,7 @@ public class Global {
                     return true;
                 }
                 sleep(nextPollIntervalMs());
-            } while (!Thread.currentThread().isInterrupted() && System.currentTimeMillis() - startTime < 5000);
+            } while (!Thread.currentThread().isInterrupted() && activeTimeMillis() - startTime < 5000);
         } catch (Exception e) {
             if (!Thread.currentThread().isInterrupted()) {
                 Microbot.logStackTrace("Global Sleep: ", e);
@@ -232,7 +240,7 @@ public class Global {
 
     public static boolean sleepUntilTrue(BooleanSupplier awaitedCondition, int time, int timeout) {
         if (Microbot.getClient().isClientThread()) return false;
-        long startTime = System.currentTimeMillis();
+        long startTime = activeTimeMillis();
         try {
             do {
                 if (Thread.currentThread().isInterrupted() || humanOwnsInput()) {
@@ -242,7 +250,7 @@ public class Global {
                     return true;
                 }
                 sleep(time);
-            } while (!Thread.currentThread().isInterrupted() && System.currentTimeMillis() - startTime < timeout);
+            } while (!Thread.currentThread().isInterrupted() && activeTimeMillis() - startTime < timeout);
         } catch (Exception e) {
             if (!Thread.currentThread().isInterrupted()) {
                 Microbot.logStackTrace("Global Sleep: ", e);
@@ -253,20 +261,20 @@ public class Global {
 
     public static boolean sleepUntilTrue(BooleanSupplier awaitedCondition, BooleanSupplier resetCondition, int time, int timeout) {
         if (Microbot.getClient().isClientThread()) return false;
-        long startTime = System.currentTimeMillis();
+        long startTime = activeTimeMillis();
         try {
             do {
                 if (Thread.currentThread().isInterrupted() || humanOwnsInput()) {
                     return false;
                 }
                 if (resetCondition.getAsBoolean()) {
-                    startTime = System.currentTimeMillis();
+                    startTime = activeTimeMillis();
                 }
                 if (awaitedCondition.getAsBoolean()) {
                     return true;
                 }
                 sleep(time);
-            } while (!Thread.currentThread().isInterrupted() && System.currentTimeMillis() - startTime < timeout);
+            } while (!Thread.currentThread().isInterrupted() && activeTimeMillis() - startTime < timeout);
         } catch (Exception e) {
             if (!Thread.currentThread().isInterrupted()) {
                 Microbot.logStackTrace("Global Sleep: ", e);
@@ -285,7 +293,7 @@ public class Global {
     public static void sleepUntilOnClientThread(BooleanSupplier awaitedCondition, int time) {
         if (Microbot.getClient().isClientThread()) return;
         boolean done;
-        long startTime = System.currentTimeMillis();
+        long startTime = activeTimeMillis();
         try {
             do {
                 // Never calls sleep(): it spins on the client-thread round trip.
@@ -293,7 +301,7 @@ public class Global {
                     return;
                 }
                 done = Microbot.getClientThread().runOnClientThreadOptional(awaitedCondition::getAsBoolean).orElse(false);
-            } while (!done && !Thread.currentThread().isInterrupted() && System.currentTimeMillis() - startTime < time);
+            } while (!done && !Thread.currentThread().isInterrupted() && activeTimeMillis() - startTime < time);
         } catch (Exception e) {
             if (!Thread.currentThread().isInterrupted()) {
                 Microbot.logStackTrace("Global Sleep: ", e);
@@ -317,7 +325,14 @@ public class Global {
         GameTickBroadcaster broadcaster = Microbot.getGameTickBroadcaster();
         if (broadcaster == null) return false;
         try {
-            return broadcaster.awaitNextTick() && !humanOwnsInput();
+            while (!Thread.currentThread().isInterrupted()) {
+                long generation = ScriptPauseController.getGeneration();
+                broadcaster.awaitNextTick();
+                if (humanOwnsInput()) return false;
+                // A tick consumed during pause is not a fresh tick after resume.
+                if (generation == ScriptPauseController.getGeneration()) return true;
+            }
+            return false;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return false;
@@ -330,7 +345,14 @@ public class Global {
         GameTickBroadcaster broadcaster = Microbot.getGameTickBroadcaster();
         if (broadcaster == null) return false;
         try {
-            return broadcaster.awaitNextTick(timeoutMs) && !humanOwnsInput();
+            while (!Thread.currentThread().isInterrupted()) {
+                long generation = ScriptPauseController.getGeneration();
+                boolean tick = broadcaster.awaitNextTick(timeoutMs);
+                if (humanOwnsInput()) return false;
+                // A tick/timeout during pause is not a fresh tick after resume.
+                if (generation == ScriptPauseController.getGeneration()) return tick;
+            }
+            return false;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return false;
