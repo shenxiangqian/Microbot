@@ -51,6 +51,7 @@ import net.runelite.client.plugins.*;
 import net.runelite.client.plugins.microbot.MicrobotApi;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.ScriptLifecycleRegistry;
+import net.runelite.client.plugins.microbot.recovery.StartupRecovery;
 import net.runelite.client.plugins.microbot.util.misc.Rs2UiHelper;
 import net.runelite.client.ui.SplashScreen;
 import okhttp3.HttpUrl;
@@ -71,15 +72,14 @@ import java.lang.reflect.InvocationTargetException;
 import java.net.Proxy;
 import java.net.ProxySelector;
 import java.net.URLClassLoader;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Future;
-import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Predicate;
@@ -107,13 +107,21 @@ public class MicrobotPluginManager {
     private final ConfigManager configManager;
     private final MicrobotApi microbotApi;
 
+    private final LivePluginManager livePlugins;
     private final Map<String, String> blockedPlugins = new ConcurrentHashMap<>();
     private final Map<String, URLClassLoader> loaders = new ConcurrentHashMap<>();
+    private final Map<String, String> notifiedBlockedPlugins = new HashMap<>();
 
     private final Map<String, SideLoadedPluginDeployment> deployments = new ConcurrentHashMap<>();
     private final Set<String> reloadBlockedInternalNames = ConcurrentHashMap.newKeySet();
     private final Object sideLoadLock = new Object();
     private volatile SideLoadedScriptReference lastStartedSideLoadedScript;
+
+    private final ExecutorService downloads = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "microbot-plugin-downloads");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     @Inject
     @Named("safeMode")
@@ -145,10 +153,48 @@ public class MicrobotPluginManager {
         this.gson = gson;
         this.configManager = configManager;
         this.microbotApi = microbotApi;
+        this.livePlugins = null;
 
         PLUGIN_DIR.mkdirs();
         RUNTIME_PLUGIN_DIR.mkdirs();
         cleanupStaleRuntimeJars();
+    }
+
+    MicrobotPluginManager(
+            OkHttpClient okHttpClient,
+            MicrobotPluginClient microbotPluginClient,
+            EventBus eventBus,
+            PluginManager pluginManager,
+            ConfigManager configManager,
+            MicrobotApi microbotApi,
+            LivePluginManager livePlugins
+    ) {
+        this.okHttpClient = okHttpClient;
+        this.microbotPluginClient = microbotPluginClient;
+        this.eventBus = eventBus;
+        this.pluginManager = pluginManager;
+        this.configManager = configManager;
+        this.microbotApi = microbotApi;
+        this.livePlugins = livePlugins;
+        this.executor = null;
+        this.gson = null;
+        livePlugins.setLoadPolicy(new LivePluginManager.LoadPolicy() {
+            @Override
+            public String blockReason(String internalName, PluginDescriptor descriptor) {
+                return getLoadBlockReason(internalName, descriptor);
+            }
+
+            @Override
+            public void blocked(String internalName, String version, String phase, String reason) {
+                blockedPlugins.put(internalName, reason);
+                StartupRecovery.pluginFailed(internalName, version, phase, reason);
+            }
+
+            @Override
+            public void loaded(String internalName) {
+                blockedPlugins.remove(internalName);
+            }
+        });
     }
 
     /**
@@ -230,6 +276,37 @@ public class MicrobotPluginManager {
         return loader != null && getInstalledPlugins().stream()
                 .anyMatch(plugin -> plugin.getClass().getSimpleName().equalsIgnoreCase(internalName)
                         && plugin.getClass().getClassLoader() == loader);
+    }
+
+    public boolean isHubInstalled(String internalName) {
+        if (Strings.isNullOrEmpty(internalName)) {
+            return false;
+        }
+        Optional<LivePluginManager.PluginEntry> live = liveEntry(internalName);
+        return live.isPresent() ? live.get().getHubId() != null : hasInstalledVersionRecord(internalName);
+
+    }
+
+    private Optional<LivePluginManager.PluginEntry> liveEntry(String internalName) {
+        List<LivePluginManager.PluginEntry> entries = livePlugins.getInstalledPlugins();
+        Optional<LivePluginManager.PluginEntry> byHub = entries.stream()
+                .filter(entry -> internalName.equalsIgnoreCase(entry.getHubId()))
+                .findFirst();
+        if (byHub.isPresent()) {
+            return byHub;
+        }
+        return entries.stream()
+                .filter(entry -> entry.getClassNames().stream().anyMatch(name -> internalName.equalsIgnoreCase(simpleName(name))))
+                .findFirst();
+    }
+
+    private boolean hasInstalledVersionRecord(String internalName) {
+        return !Strings.isNullOrEmpty(configManager.getConfiguration(INSTALLED_VERSION_GROUP,
+                INSTALLED_VERSION_KEY_PREFIX + internalName));
+    }
+
+    private static String simpleName(String className) {
+        return className.substring(className.lastIndexOf('.') + 1);
     }
 
     /**
@@ -442,6 +519,11 @@ public class MicrobotPluginManager {
         }
     }
 
+
+    public File getPluginDirectory() {
+        return livePlugins.getPluginDirectory().toFile();
+    }
+
     public void loadSideLoadPlugins() {
         if (safeMode) {
             log.warn("Safe mode is enabled, skipping loading of sideloaded plugins.");
@@ -462,6 +544,17 @@ public class MicrobotPluginManager {
             }
         }
         eventBus.post(new ExternalPluginsChanged());
+    }
+
+    public synchronized Map<String, String> takeBlockedPluginsToNotify() {
+        Map<String, String> pending = new java.util.TreeMap<>();
+        blockedPlugins.forEach((name, reason) -> {
+            if (!reason.equals(notifiedBlockedPlugins.get(name))) {
+                pending.put(name, reason);
+            }
+        });
+        notifiedBlockedPlugins.putAll(pending);
+        return pending;
     }
 
     /**
@@ -565,6 +658,33 @@ public class MicrobotPluginManager {
             future.completeExceptionally(e);
         }
         return future;
+    }
+
+    @Nullable
+    String getLoadBlockReason(String internalName, PluginDescriptor descriptor) {
+        if (!Rs2UiHelper.isClientVersionCompatible(descriptor.minClientVersion())) {
+            return "requires client " + descriptor.minClientVersion() + " or newer (current "
+                    + RuneLiteProperties.getMicrobotVersion() + ")";
+        }
+        if (descriptor.disable()) {
+            return "disabled upstream";
+        }
+
+        MicrobotPluginManifest manifest = manifestMap.get(internalName);
+        if (manifest == null) {
+            return null;
+        }
+        MicrobotPluginHealth health = getPluginHealth(manifest, descriptor.version());
+        String reason = health.getReason();
+        if (manifest.isDisable()) {
+            return "disabled upstream" + (reason == null ? "" : ": " + reason);
+        }
+        if (!Strings.isNullOrEmpty(descriptor.version())
+                && (health.getState() == MicrobotPluginHealth.State.BROKEN || health.isAffected(descriptor.version()))) {
+            return "version " + descriptor.version() + " is confirmed broken upstream"
+                    + (reason == null ? "" : ": " + reason);
+        }
+        return null;
     }
 
     private SideLoadedScriptOperationResult startSideLoadedScriptNow(String internalName, String className) {
@@ -1944,8 +2064,111 @@ public class MicrobotPluginManager {
      *
      * @param manifest the manifest of the plugin to install
      */
-    public Future<?> installPlugin(MicrobotPluginManifest manifest, @Nullable String versionOverride) {
-        return executor.submit(() -> install(manifest, versionOverride));
+    public CompletableFuture<LivePluginManager.OperationResult> installPlugin(
+            MicrobotPluginManifest manifest, @Nullable String versionOverride) {
+        if (isShuttingDown.get()) {
+            return installationUnavailable();
+        }
+        if (manifest == null || Strings.isNullOrEmpty(manifest.getInternalName()) || manifest.isDisable()) {
+            return CompletableFuture.completedFuture(
+                    LivePluginManager.OperationResult.failure("This Hub plugin is unavailable."));
+        }
+        if (safeMode) {
+            return CompletableFuture.completedFuture(
+                    LivePluginManager.OperationResult.failure("External plugins are unavailable in safe mode."));
+        }
+        String version = Strings.isNullOrEmpty(versionOverride) ? manifest.getVersion() : versionOverride;
+        MicrobotPluginHealth health = getPluginHealth(manifest, version);
+        if (health.isBlocking()) {
+            return CompletableFuture.completedFuture(LivePluginManager.OperationResult.failure(
+                    "This plugin version is unavailable: " + health.getLabel()
+                            + (health.getReason() == null ? "" : " (" + health.getReason() + ")")));
+        }
+        try {
+            return CompletableFuture.supplyAsync(() -> downloadAndInstall(manifest, version), downloads);
+        } catch (RejectedExecutionException rejected) {
+            // Shutdown can win after the flag check but before executor submission.
+            return installationUnavailable();
+        }
+    }
+
+    private LivePluginManager.OperationResult downloadAndInstall(MicrobotPluginManifest manifest, String version) {
+        Path temporary = null;
+        try {
+            if (isShuttingDown.get()) {
+                return LivePluginManager.OperationResult.failure("Plugin manager is shutting down.");
+            }
+            if (Strings.isNullOrEmpty(version) || (manifest.getMinClientVersion() != null
+                    && !Rs2UiHelper.isClientVersionCompatible(manifest.getMinClientVersion()))) {
+                return LivePluginManager.OperationResult.failure("The selected plugin version is incompatible with this client.");
+            }
+            HttpUrl jarUrl = microbotPluginClient.getJarURL(manifest, version);
+            if (jarUrl == null || !jarUrl.isHttps()) {
+                return LivePluginManager.OperationResult.failure("Couldn't download " + hubName(manifest)
+                        + ": the Plugin Hub link is not a secure HTTPS link. Report this in Discord.");
+            }
+            temporary = java.nio.file.Files.createTempFile("microbot-plugin-", ".jar");
+            Request request = new Request.Builder().url(jarUrl).build();
+            try (Response response = noProxy(okHttpClient).newCall(request).execute()) {
+                if (response.code() >= 400 && response.code() < 500) {
+                    return LivePluginManager.OperationResult.failure("Couldn't download " + hubName(manifest) + " "
+                            + version + ": this version is no longer on the Plugin Hub. Pick another version.");
+                }
+                if (!response.isSuccessful() || response.body() == null || !response.request().url().isHttps()) {
+                    return LivePluginManager.OperationResult.failure("Couldn't download " + hubName(manifest)
+                            + " from the Plugin Hub (HTTP " + response.code() + "). Check your connection and try again.");
+                }
+                try (InputStream input = response.body().byteStream()) {
+                    java.nio.file.Files.copy(input, temporary, StandardCopyOption.REPLACE_EXISTING);
+                }
+            }
+            String expectedHash = version.equals(manifest.getVersion()) ? manifest.getSha256() : null;
+            String actualHash = LivePluginManager.hash(temporary);
+            if (!Strings.isNullOrEmpty(expectedHash) && !actualHash.equalsIgnoreCase(expectedHash)) {
+                return LivePluginManager.OperationResult.failure("The downloaded file for " + hubName(manifest)
+                        + " didn't match the Plugin Hub's checksum. Try again later; if it keeps happening, report it in Discord.");
+            }
+            LivePluginManager.OperationResult result = livePlugins.installHub(temporary,
+                    manifest.getInternalName(), expectedHash).get();
+            if (result.isSuccess()) {
+                rememberInstalledPluginVersion(manifest.getInternalName(), version, actualHash);
+                try {
+                    sendPluginInstallTelemetry(manifest, version);
+                } catch (RuntimeException failure) {
+                    // Telemetry is best effort and must not turn an installed plugin into a failure.
+                    log.debug("Could not record plugin installation telemetry");
+                }
+            }
+            return result;
+        } catch (Exception failure) {
+            if (failure instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            if (failure instanceof IOException) {
+                return LivePluginManager.OperationResult.failure("Couldn't reach the Plugin Hub to download "
+                        + hubName(manifest) + ". Check your connection and try again.");
+            }
+            return LivePluginManager.OperationResult.failure("Couldn't " + (isHubInstalled(manifest.getInternalName()) ? "update " : "install ")
+                    + hubName(manifest) + ": "
+                    + (failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage()));
+        } finally {
+            if (temporary != null) {
+                try {
+                    java.nio.file.Files.deleteIfExists(temporary);
+                } catch (IOException ignored) {
+                    log.debug("Could not remove temporary plugin download");
+                }
+            }
+        }
+    }
+
+    private static String hubName(MicrobotPluginManifest manifest) {
+        return Strings.isNullOrEmpty(manifest.getDisplayName()) ? manifest.getInternalName() : manifest.getDisplayName();
+    }
+
+    private CompletableFuture<LivePluginManager.OperationResult> installationUnavailable() {
+        return CompletableFuture.completedFuture(
+                LivePluginManager.OperationResult.failure("Plugin manager is shutting down."));
     }
 
     /**
@@ -1953,8 +2176,24 @@ public class MicrobotPluginManager {
      *
      * @param manifest the manifest of the plugin to remove
      */
-    public Future<?> removePlugin(MicrobotPluginManifest manifest) {
-        return executor.submit(() -> remove(manifest));
+    public CompletableFuture<LivePluginManager.OperationResult> removePlugin(MicrobotPluginManifest manifest) {
+        if (manifest == null || Strings.isNullOrEmpty(manifest.getInternalName())) {
+            return CompletableFuture.completedFuture(
+                    LivePluginManager.OperationResult.failure("Select an installed plugin."));
+        }
+        String internalName = manifest.getInternalName();
+        return livePlugins.removeHub(internalName).thenApply(result -> {
+            if (result.isSuccess()) {
+                clearInstalledPluginVersion(internalName);
+                synchronized (this) {
+                    blockedPlugins.remove(internalName);
+                    notifiedBlockedPlugins.remove(internalName);
+                }
+                // The lifecycle publishes before this continuation clears Hub metadata/health.
+                SwingUtilities.invokeLater(() -> eventBus.post(new ExternalPluginsChanged()));
+            }
+            return result;
+        });
     }
 
     /**
@@ -2085,11 +2324,11 @@ public class MicrobotPluginManager {
     }
 
     /**
-     * Submits a plugin refresh task to the executor.
-     * This will reload plugins based on the current profile's installed plugins list.
+     * Downloads and replaces a Hub artifact through the serialized live lifecycle.
      */
-    public Future<?> updatePlugin(MicrobotPluginManifest manifest, @Nullable String versionOverride) {
-        return executor.submit(() -> update(manifest, versionOverride));
+    public CompletableFuture<LivePluginManager.OperationResult> updatePlugin(
+            MicrobotPluginManifest manifest, @Nullable String versionOverride) {
+        return installPlugin(manifest, versionOverride);
     }
 
     /**

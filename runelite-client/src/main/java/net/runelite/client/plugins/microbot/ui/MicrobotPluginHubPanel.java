@@ -660,6 +660,7 @@ public class MicrobotPluginHubPanel extends MicrobotPluginPanel {
 				});
 			}
 
+
 			private void removePlugin()
 			{
 				runOperation("remove", () -> microbotPluginManager.removePlugin(manifest), () -> {

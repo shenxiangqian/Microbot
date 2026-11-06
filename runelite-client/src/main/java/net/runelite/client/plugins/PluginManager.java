@@ -47,6 +47,7 @@ import net.runelite.client.events.ProfileChanged;
 import net.runelite.client.plugins.lowmemory.LowMemoryPlugin;
 import net.runelite.client.plugins.microbot.AlwaysOnPlugins;
 import net.runelite.client.plugins.microbot.Microbot;
+import net.runelite.client.plugins.microbot.externalplugins.PluginJarClassLoader;
 import net.runelite.client.task.Schedule;
 import net.runelite.client.task.ScheduledMethod;
 import net.runelite.client.task.Scheduler;
@@ -65,6 +66,7 @@ import java.lang.invoke.*;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
@@ -86,6 +88,8 @@ public class PluginManager {
     private final Provider<GameEventManager> sceneTileManager;
     private final PluginModuleFactory pluginModuleFactory;
     private final List<Plugin> plugins = new CopyOnWriteArrayList<>();
+    private final Map<Plugin, Throwable> shutdownFailures = new ConcurrentHashMap<>();
+    private final Set<Plugin> unloadingPlugins = java.util.concurrent.ConcurrentHashMap.newKeySet();
     @Getter
     private final List<Plugin> activePlugins = new CopyOnWriteArrayList<>();
 
@@ -481,6 +485,27 @@ public class PluginManager {
         }
     }
 
+    /** A failed shutdown remains visible even though the plugin is no longer marked active. */
+    public Throwable getShutdownFailure(Plugin plugin) {
+        return shutdownFailures.get(plugin);
+    }
+
+    /** Prevent profile changes and UI toggles from restarting a plugin during permanent disposal. */
+    public void setPluginUnloading(Plugin plugin, boolean unloading) {
+        if (unloading) {
+            unloadingPlugins.add(plugin);
+        } else {
+            unloadingPlugins.remove(plugin);
+        }
+    }
+
+    /** Prepare an external instance without publishing it in the live plugin list. */
+    @SuppressWarnings("unchecked")
+    public Plugin preparePlugin(Class<? extends Plugin> type, Collection<Plugin> dependencies)
+            throws PluginInstantiationException {
+        return instantiate(new ArrayList<>(dependencies), (Class<Plugin>) type);
+    }
+
     /**
      * Test if a plugin is enabled, which causes the client to attempt to start it on boot
      *
@@ -561,6 +586,20 @@ public class PluginManager {
 
         log.debug("Loaded plugin {}", clazz.getSimpleName());
         return plugin;
+    }
+
+    /** Enable/disable identity for a plugin; external default names are isolated from core names. */
+    public static String getPluginConfigurationKey(Class<?> type) {
+        PluginDescriptor descriptor = type.getAnnotation(PluginDescriptor.class);
+        if (Strings.isNullOrEmpty(descriptor.configName()) && type.getClassLoader() instanceof PluginJarClassLoader) {
+            return "external." + type.getName().toLowerCase(Locale.ROOT);
+        }
+        return legacyPluginConfigurationKey(type);
+    }
+
+    private static String legacyPluginConfigurationKey(Class<?> type) {
+        PluginDescriptor descriptor = type.getAnnotation(PluginDescriptor.class);
+        return (Strings.isNullOrEmpty(descriptor.configName()) ? type.getSimpleName() : descriptor.configName()).toLowerCase(Locale.ROOT);
     }
 
     public void add(Plugin plugin) {

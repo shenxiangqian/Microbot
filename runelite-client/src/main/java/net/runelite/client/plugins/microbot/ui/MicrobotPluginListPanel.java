@@ -439,6 +439,51 @@ public class MicrobotPluginListPanel extends MicrobotPluginPanel {
         microbotPluginManager.rememberOutdatedPluginUpdateNotification(outdatedPluginUpdate);
     }
 
+    private void showBlockedPluginsNotice() {
+        Map<String, String> blocked = microbotPluginManager.takeBlockedPluginsToNotify();
+        if (blocked.isEmpty()) {
+            return;
+        }
+
+        Map<String, MicrobotPluginManifest> manifests = microbotPluginManager.getManifestMap();
+        String message = blockedPluginsMessage(blocked, name -> {
+            MicrobotPluginManifest manifest = manifests.get(name);
+            return manifest == null || manifest.getDisplayName() == null ? name : manifest.getDisplayName();
+        });
+
+        long deadline = System.currentTimeMillis() + BLOCKED_NOTICE_WAIT_MS;
+        Timer timer = new Timer(1000, null);
+        timer.setInitialDelay(0);
+        timer.addActionListener(e -> {
+            Window window = Arrays.stream(Window.getWindows())
+                    .filter(w -> w instanceof ContainableFrame && w.isShowing())
+                    .findFirst()
+                    .orElse(null);
+            if (window == null) {
+                if (System.currentTimeMillis() > deadline) {
+                    timer.stop();
+                }
+                return;
+            }
+            timer.stop();
+            JDialog dialog = new JOptionPane(message, JOptionPane.WARNING_MESSAGE)
+                    .createDialog(window, "Microbot Plugins Not Loaded");
+            dialog.setModal(false);
+            dialog.setVisible(true);
+        });
+        timer.start();
+    }
+
+    static String blockedPluginsMessage(Map<String, String> blocked, Function<String, String> displayName) {
+        StringBuilder message = new StringBuilder("<html>These Microbot Plugin Hub plugins were not loaded:<br>");
+        blocked.forEach((name, reason) -> message.append("<br>&bull; <b>")
+                .append(HtmlEscapers.htmlEscaper().escape(displayName.apply(name)))
+                .append("</b>: ")
+                .append(HtmlEscapers.htmlEscaper().escape(reason)));
+        return message.append("<br><br>Open the <strong>Microbot Plugin Hub</strong> to see details, remove them or install an unaffected version. For a JAR you added yourself, fix or remove the JAR in <strong>Local Plugins</strong>.</html>")
+                .toString();
+    }
+
     void savePinnedPlugins() {
         final String value = pluginList.stream()
                 .filter(MicrobotPluginListItem::isPinned)

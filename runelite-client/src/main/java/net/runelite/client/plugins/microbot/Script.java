@@ -126,6 +126,9 @@ public abstract class Script extends Global implements IScript {
     protected ScheduledExecutorService scheduledExecutorService = scriptExecutor;
     protected ScheduledFuture<?> scheduledFuture;
     protected ScheduledFuture<?> mainScheduledFuture;
+    private final Object lifecycleLock = new Object();
+    private volatile boolean disposed;
+    private boolean heartbeatRecorded;
 
     protected Script() {
         ScriptLifecycleRegistry.register(this);
@@ -183,6 +186,27 @@ public abstract class Script extends Global implements IScript {
      */
     public boolean isRunning() {
         return mainScheduledFuture != null && !mainScheduledFuture.isDone();
+    }
+
+    /** Permanently dispose this instance after its plugin has stopped. */
+    public final ScheduledExecutorService disposeForUnload() {
+        synchronized (lifecycleLock) {
+            disposed = true;
+            if (heartbeatRecorded) {
+                ScriptHeartbeatRegistry.remove(getClass().getName());
+                heartbeatRecorded = false;
+            }
+        }
+        if (mainScheduledFuture != null) {
+            mainScheduledFuture.cancel(true);
+        }
+        if (scheduledFuture != null) {
+            scheduledFuture.cancel(true);
+        }
+        if (scheduledExecutorService != null) {
+            scheduledExecutorService.shutdownNow();
+        }
+        return scheduledExecutorService;
     }
 
     @Getter

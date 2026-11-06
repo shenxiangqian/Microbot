@@ -766,6 +766,7 @@ public final class ReleaseSmokeChecks {
     }
 
     void hubPlugins(CheckContext context) {
+
         boolean loaded = waitFor(() -> !microbotPluginManager.getManifestMap().isEmpty(), 60_000);
         Map<String, MicrobotPluginManifest> manifests = microbotPluginManager.getManifestMap();
         context.detail("manifestEntries", manifests.size());
