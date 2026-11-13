@@ -15,6 +15,10 @@ public final class HwidAgent
 
 	public static final String TOGGLE_PROPERTY = "microbot.hwid.spoof";
 	public static final String AGENT_PROPERTY = "microbot.hwid.agent";
+	/** {@link #AGENT_PROPERTY} value once the transformers are registered. */
+	public static final String AGENT_LOADED = "loaded";
+	/** {@link #AGENT_PROPERTY} value when the agent was attached with -Dmicrobot.hwid.spoof=false. */
+	public static final String AGENT_INERT = "inert";
 	public static final String DEVICE_HOOK_PROPERTY = "microbot.hwid.device.installed";
 	public static final String RANDOM_DAT_CALL_PROPERTY = "microbot.hwid.randomdat.lastCall";
 
@@ -30,8 +34,18 @@ public final class HwidAgent
 	{
 	}
 
+	/**
+	 * Attaching the agent is the opt-in, so a missing -Dmicrobot.hwid.spoof registers the transformers.
+	 * Only an explicit -Dmicrobot.hwid.spoof=false leaves the agent inert: it registers no transformer,
+	 * touches no file and only publishes {@link #AGENT_INERT}.
+	 */
 	public static void premain(String args, Instrumentation inst)
 	{
+		if (spoofExplicitlyOff())
+		{
+			System.setProperty(AGENT_PROPERTY, AGENT_INERT);
+			return;
+		}
 		try
 		{
 			inst.addTransformer(new PlatformInfoTransformer());
@@ -80,6 +94,12 @@ public final class HwidAgent
 	public static boolean spoofEnabled()
 	{
 		return Boolean.parseBoolean(System.getProperty(TOGGLE_PROPERTY, "true"));
+	}
+
+	static boolean spoofExplicitlyOff()
+	{
+		String value = System.getProperty(TOGGLE_PROPERTY);
+		return value != null && "false".equalsIgnoreCase(value.trim());
 	}
 
 	public static Object randomDatFile(Object handle)
