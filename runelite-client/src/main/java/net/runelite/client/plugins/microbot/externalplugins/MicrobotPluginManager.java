@@ -111,6 +111,7 @@ public class MicrobotPluginManager {
     private final Map<String, String> blockedPlugins = new ConcurrentHashMap<>();
     private final Map<String, URLClassLoader> loaders = new ConcurrentHashMap<>();
     private final Map<String, String> notifiedBlockedPlugins = new HashMap<>();
+    private volatile boolean localPluginsLoaded;
 
     private final Map<String, SideLoadedPluginDeployment> deployments = new ConcurrentHashMap<>();
     private final Set<String> reloadBlockedInternalNames = ConcurrentHashMap.newKeySet();
@@ -255,6 +256,82 @@ public class MicrobotPluginManager {
         }
     }
 
+    /** One snapshot of installed jars for every row, so a list refresh does not rescan them per plugin. */
+    public Map<Plugin, OutdatedPluginUpdate> findUpdates(Collection<Plugin> plugins) {
+        Map<Plugin, OutdatedPluginUpdate> updates = new HashMap<>();
+        List<LivePluginManager.PluginEntry> installed = null;
+        for (Plugin plugin : plugins) {
+            if (getPluginManifest(plugin) != null) {
+                installed = installed == null ? livePlugins.getInstalledPlugins() : installed;
+                findUpdate(plugin, installed).ifPresent(update -> updates.put(plugin, update));
+            }
+        }
+        return updates;
+    }
+
+    public Optional<OutdatedPluginUpdate> findUpdate(Plugin plugin) {
+        return getPluginManifest(plugin) == null ? Optional.empty() : findUpdate(plugin, livePlugins.getInstalledPlugins());
+    }
+
+    private Optional<OutdatedPluginUpdate> findUpdate(Plugin plugin, List<LivePluginManager.PluginEntry> installed) {
+        MicrobotPluginManifest manifest = getPluginManifest(plugin);
+        if (manifest == null) {
+            return Optional.empty();
+        }
+
+        String internalName = manifest.getInternalName();
+        String latestVersion = manifest.getVersion();
+        String installedVersion = installedVersion(internalName, installed)
+                .orElseGet(() -> {
+                    PluginDescriptor descriptor = plugin.getClass().getAnnotation(PluginDescriptor.class);
+                    return descriptor == null ? null : descriptor.version();
+                });
+
+        if (Strings.isNullOrEmpty(internalName)
+                || Strings.isNullOrEmpty(installedVersion)
+                || Strings.isNullOrEmpty(latestVersion)
+                || !isNewerVersion(latestVersion, installedVersion)
+                || getPluginHealth(manifest, latestVersion).isBlocking()) {
+            return Optional.empty();
+        }
+
+        return Optional.of(new OutdatedPluginUpdate(
+                internalName,
+                Strings.isNullOrEmpty(manifest.getDisplayName()) ? internalName : manifest.getDisplayName(),
+                installedVersion,
+                latestVersion
+        ));
+    }
+
+    private Optional<String> installedVersion(String internalName, List<LivePluginManager.PluginEntry> installed) {
+        if (Strings.isNullOrEmpty(internalName)) {
+            return Optional.empty();
+        }
+        Optional<LivePluginManager.PluginEntry> live = installed.stream()
+                .filter(entry -> internalName.equals(entry.getHubId()) || entry.getClassNames().stream()
+                        .anyMatch(name -> internalName.equals(name.substring(name.lastIndexOf('.') + 1))))
+                .findFirst();
+        if (live.isPresent() && live.get().getHubId() == null) {
+            return Optional.ofNullable(live.get().getVersion()).filter(version -> !version.isEmpty());
+        }
+        if (!live.isPresent() && localPluginsLoaded) {
+            // A local removal must not resurrect stale Hub metadata in the installed-version UI.
+            return Optional.empty();
+        }
+        String key = INSTALLED_VERSION_KEY_PREFIX + internalName;
+        String value = configManager.getConfiguration(INSTALLED_VERSION_GROUP, key);
+        if (Strings.isNullOrEmpty(value)) {
+            return Optional.empty();
+        }
+
+        String[] parts = value.split(":", 2);
+        if (parts.length < 2 || Strings.isNullOrEmpty(parts[0]) || Strings.isNullOrEmpty(parts[1])) {
+            return Optional.empty();
+        }
+
+        return Optional.of(parts[0]);
+    }
+
     public Map<String, MicrobotPluginManifest> getManifestMap() {
         return Collections.unmodifiableMap(manifestMap);
     }
@@ -285,6 +362,18 @@ public class MicrobotPluginManager {
         Optional<LivePluginManager.PluginEntry> live = liveEntry(internalName);
         return live.isPresent() ? live.get().getHubId() != null : hasInstalledVersionRecord(internalName);
 
+    }
+
+    /** Versions that compare equal but differ in text, such as non-numeric ones, still count as an update. */
+    public static boolean isNewerVersion(String latest, String installed) {
+        String newer = withoutLeadingV(latest);
+        String current = withoutLeadingV(installed);
+        return !newer.equals(current) && Rs2UiHelper.compareVersions(newer, current) >= 0;
+    }
+
+    @Nullable
+    private static String withoutLeadingV(@Nullable String version) {
+        return version == null ? null : version.replaceFirst("^[vV](?=\\d)", "");
     }
 
     private Optional<LivePluginManager.PluginEntry> liveEntry(String internalName) {
@@ -544,6 +633,7 @@ public class MicrobotPluginManager {
             }
         }
         eventBus.post(new ExternalPluginsChanged());
+        localPluginsLoaded = true;
     }
 
     public synchronized Map<String, String> takeBlockedPluginsToNotify() {

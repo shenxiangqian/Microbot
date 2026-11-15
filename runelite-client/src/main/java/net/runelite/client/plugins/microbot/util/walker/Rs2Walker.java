@@ -75,6 +75,7 @@ import net.runelite.client.plugins.microbot.util.walker.segment.SegmentGate;
 import net.runelite.client.plugins.microbot.util.walker.recovery.TailDecision;
 import net.runelite.client.plugins.microbot.util.walker.state.WalkExit;
 import net.runelite.client.plugins.microbot.util.walker.state.WalkerRouteState;
+import net.runelite.client.plugins.microbot.util.walker.state.WalkStepSession;
 import net.runelite.client.plugins.microbot.util.walker.door.Rs2DoorHandler;
 import net.runelite.client.plugins.microbot.util.walker.door.Rs2WalkerAwaits;
 import net.runelite.client.plugins.microbot.util.walker.door.model.AwaitTicket;
@@ -2343,7 +2344,7 @@ public class Rs2Walker {
 
             boolean partialPath = false;
             if (dst == null || dst.distanceTo(target) > distance) {
-                final WorldPoint sealedRim = consumeSealedRimRetarget(target, dst);
+                final WorldPoint sealedRim = consumeSealedRimRetarget(target, dst,walkLoop.playerLoc,distance);
                 if (sealedRim != null) {
                     if (session.stepMode) {
                         // 分步模式：改道等于「另起一段寻路」，本趟到此结束，下一趟以新目标继续。

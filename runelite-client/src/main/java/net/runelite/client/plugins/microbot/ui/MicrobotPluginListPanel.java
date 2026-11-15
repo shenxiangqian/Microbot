@@ -27,6 +27,7 @@ package net.runelite.client.plugins.microbot.ui;
 import com.google.common.collect.ImmutableList;
 import com.google.common.html.HtmlEscapers;
 import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigDescriptor;
@@ -43,8 +44,10 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.PluginInstantiationException;
 import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.plugins.microbot.MicrobotConfig;
+import net.runelite.client.plugins.microbot.externalplugins.LivePluginManager;
 import net.runelite.client.plugins.microbot.externalplugins.MicrobotPluginManager;
 import net.runelite.client.plugins.microbot.externalplugins.MicrobotPluginManifest;
+import net.runelite.client.plugins.microbot.ui.search.MicrobotPluginNames;
 import net.runelite.client.plugins.microbot.ui.search.MicrobotPluginSearch;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.ContainableFrame;
@@ -59,18 +62,15 @@ import javax.inject.Inject;
 import javax.inject.Provider;
 import javax.inject.Singleton;
 import javax.swing.*;
+import javax.swing.Timer;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.IdentityHashMap;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -83,7 +83,8 @@ public class MicrobotPluginListPanel extends MicrobotPluginPanel {
     static final int LIST_VIEW_WIDTH = PluginPanel.PANEL_WIDTH - PluginPanel.SCROLLBAR_WIDTH;
     static final int LIST_ITEM_WIDTH = LIST_VIEW_WIDTH - 20;
 
-    private static final String RUNELITE_GROUP_NAME = MicrobotConfig.class.getAnnotation(ConfigGroup.class).value();
+    static final String RUNELITE_GROUP_NAME = MicrobotConfig.class.getAnnotation(ConfigGroup.class).value();
+    private final Set<String> updating = new HashSet<>();
     private static final String PINNED_PLUGINS_CONFIG_KEY = "pinnedPlugins";
     private static final ImageIcon REFRESH_ICON;
     private static final ImmutableList<String> CATEGORY_TAGS = ImmutableList.of(
@@ -104,6 +105,7 @@ public class MicrobotPluginListPanel extends MicrobotPluginPanel {
         REFRESH_ICON = new ImageIcon(refreshIcon);
     }
 
+    private static final int TOP_BUTTON_SIZE = 30;
     private final ConfigManager configManager;
     private final PluginManager pluginManager;
     private final MicrobotPluginManager microbotPluginManager;
@@ -111,6 +113,8 @@ public class MicrobotPluginListPanel extends MicrobotPluginPanel {
     @Getter
     private final MicrobotBugReporter bugReporter;
     private final List<MicrobotPluginConfigurationDescriptor> fakePlugins = new ArrayList<>();
+
+    private final Provider<LocalPluginsPanel> localPluginsPanelProvider;
 
     @Getter
     private final ExternalPluginManager externalPluginManager;
@@ -124,6 +128,9 @@ public class MicrobotPluginListPanel extends MicrobotPluginPanel {
     private final MicrobotFixedWidthPanel mainPanel;
     private final Map<Component, Boolean> refreshEnabledStates = new IdentityHashMap<>();
     private List<MicrobotPluginListItem> pluginList;
+
+    @Setter
+    private Consumer<String> openHub = query -> { };
 
     @Inject
     public MicrobotPluginListPanel(
@@ -143,6 +150,7 @@ public class MicrobotPluginListPanel extends MicrobotPluginPanel {
         this.externalPluginManager = externalPluginManager;
         this.configPanelProvider = configPanelProvider;
         this.microbotPluginManager = microbotPluginManager;
+        this.localPluginsPanelProvider = null;
 
         muxer = new MicrobotMultiplexingPluginPanel(this) {
             @Override
@@ -263,6 +271,175 @@ public class MicrobotPluginListPanel extends MicrobotPluginPanel {
     private void restorePluginControls() {
         refreshEnabledStates.forEach(Component::setEnabled);
         refreshEnabledStates.clear();
+    }
+
+    // A fixed width makes the label report its wrapped height, so DynamicGridLayout does not clip it.
+    private static String wrapped(String html) {
+        return wrapped(html, LIST_ITEM_WIDTH - 50, "center");
+    }
+
+    private static String wrapped(String html, int width, String align) {
+        return "<div style='width:" + width + "px;text-align:" + align + "'>" + html + "</div>";
+    }
+
+    /** An underlined, wrapping line of plain text, for the row status line and the health banner links. */
+    static String linkHtml(String text) {
+        return "<html>" + wrapped("<u>" + HtmlEscapers.htmlEscaper().escape(text) + "</u>", LIST_ITEM_WIDTH - 70, "left");
+    }
+
+    void uninstall(MicrobotPluginConfigurationDescriptor plugin) {
+        String hubName = plugin.getMicrobotHubName();
+        if (hubName == null) {
+            externalPluginManager.remove(plugin.getInternalPluginHubName());
+            return;
+        }
+
+        // Built by hand: the Hub manifest may not have loaded, and removal only needs the name.
+        MicrobotPluginManifest manifest = new MicrobotPluginManifest();
+        manifest.setInternalName(hubName);
+        microbotPluginManager.removePlugin(manifest).whenComplete((result, error) ->
+                SwingUtilities.invokeLater(() -> showOperationResult("Couldn't uninstall plugin", result, error)));
+    }
+
+    private void showOperationResult(String failureTitle, LivePluginManager.OperationResult result, Throwable error) {
+        if (error == null && result.isSuccess()) {
+            if (result.isNeedsRestart()) {
+                JOptionPane.showMessageDialog(this, result.getMessage(), "Restart needed", JOptionPane.INFORMATION_MESSAGE);
+            }
+            return;
+        }
+
+        Throwable cause = error == null || error.getCause() == null ? error : error.getCause();
+        String message = cause == null ? result.getMessage() : cause.getMessage();
+        showError(failureTitle, message);
+    }
+
+    void showError(String title, String message) {
+        JOptionPane.showMessageDialog(this, message, title, JOptionPane.ERROR_MESSAGE);
+    }
+
+    /**
+     * A menu button: one radio item per sort, then {@code extra}. {@code name} says everything the menu holds, not
+     * just "Sort". Tab reaches it; a click does not focus it.
+     */
+    static <S> JButton createSortButton(String name, JPopupMenu menu, Map<S, JMenuItem> items, S[] options, Function<S, String> label,
+                                        S selected, Consumer<S> onSort, JMenuItem extra) {
+        ButtonGroup group = new ButtonGroup();
+        for (S option : options) {
+            JMenuItem item = new JRadioButtonMenuItem(label.apply(option), option == selected);
+            item.addActionListener(e -> onSort.accept(option));
+            group.add(item);
+            items.put(option, item);
+            menu.add(item);
+        }
+        menu.addSeparator();
+        menu.add(extra);
+
+        JButton button = new JButton(createSortIcon());
+        SwingUtil.removeButtonDecorations(button);
+        button.setPreferredSize(new Dimension(TOP_BUTTON_SIZE, TOP_BUTTON_SIZE));
+        button.setRequestFocusEnabled(false);
+        button.setToolTipText(name);
+        button.getAccessibleContext().setAccessibleName(name);
+        button.addActionListener(e -> menu.show(button, button.getWidth() - menu.getPreferredSize().width, button.getHeight()));
+        return button;
+    }
+
+    private static ImageIcon createSortIcon() {
+        BufferedImage image = new BufferedImage(14, 14, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = image.createGraphics();
+        graphics.setColor(ColorScheme.LIGHT_GRAY_COLOR);
+        graphics.fillPolygon(new int[]{0, 3, 7}, new int[]{5, 1, 5}, 3);
+        graphics.fillRect(3, 4, 1, 9);
+        graphics.fillPolygon(new int[]{7, 11, 14}, new int[]{9, 13, 9}, 3);
+        graphics.fillRect(10, 1, 1, 9);
+        graphics.dispose();
+        return new ImageIcon(image);
+    }
+
+    void onStatusClicked(MicrobotPluginListItem row) {
+        MicrobotPluginRowStatus status = row.getStatus();
+        Plugin plugin = row.getPluginConfig().getPlugin();
+        String name = MicrobotPluginNames.plainName(row.getPluginConfig().getName());
+        if (status == null) {
+            return;
+        }
+        switch (status.getKind()) {
+            case FAILED:
+                Throwable failure = MicrobotPluginFailures.failure(plugin);
+                // shortcut: the bug reporter takes no description, so the stack trace reaches it only through its log section.
+                if (failure == null) {
+                    break;
+                }
+                if (askToReport(name, MicrobotPluginFailures.describe(failure), row.isAlwaysOn())) {
+                    bugReporter.open(this, plugin);
+                } else {
+                    // Seen and closed: the switch already shows it is off, and an always-on plugin has no switch to clear it.
+                    MicrobotPluginFailures.clear(plugin);
+                }
+                break;
+            case HEALTH:
+                // The Hub searches its own display name, which may differ from the plugin's.
+                MicrobotPluginManifest manifest = microbotPluginManager.getManifestMap().get(row.getPluginConfig().getMicrobotHubName());
+                String hubName = manifest == null ? "" : MicrobotPluginNames.plainName(manifest.getDisplayName());
+                openHub.accept(hubName.isEmpty() ? name : hubName);
+                break;
+            case BLOCKED:
+                if (row.getPluginConfig().getMicrobotHubName() != null) {
+                    openHub.accept(name);
+                } else {
+                    localPluginsPanelProvider.get().open(this);
+                }
+                break;
+            case UPDATE:
+                update(plugin);
+                break;
+        }
+    }
+
+    // Same checks, dialogs and path as the Hub's Update.
+    private void update(Plugin plugin) {
+        MicrobotPluginManager.OutdatedPluginUpdate update = microbotPluginManager.findUpdate(plugin).orElse(null);
+        MicrobotPluginManifest manifest = update == null ? null : microbotPluginManager.getManifestMap().get(update.getInternalName());
+        if (manifest == null || updating.contains(update.getInternalName()) || !confirmInstall(manifest, update.getLatestVersion())
+                || !updating.add(update.getInternalName())) {
+            return;
+        }
+        refresh();
+        microbotPluginManager.updatePlugin(manifest, update.getLatestVersion()).whenComplete((result, error) ->
+                SwingUtilities.invokeLater(() -> {
+                    updating.remove(update.getInternalName());
+                    refresh();
+                    showOperationResult("Couldn't update " + update.getDisplayName(), result, error);
+                }));
+    }
+
+    boolean askToReport(String name, String reason, boolean alwaysOn) {
+        Object[] options = {"Report", "Close"};
+        return JOptionPane.showOptionDialog(this, wrappedMessage(failureMessage(name, reason, alwaysOn)), name + " failed to start",
+                JOptionPane.DEFAULT_OPTION, JOptionPane.ERROR_MESSAGE, null, options, options[1]) == 0;
+    }
+
+    // What happened and what to do first; the raw error last, for a report. An always-on plugin has no switch to flip.
+    static String failureMessage(String name, String reason, boolean alwaysOn) {
+        return name + (alwaysOn
+                ? " hit an error while starting. Restart the client to try again, or press Report to send a bug report. Close hides this message."
+                : " hit an error while starting and is switched off. Switch it on to try again, or press Report to send a bug report.")
+                + "\n\nError: " + reason;
+    }
+
+    private static JTextArea wrappedMessage(String message) {
+        JTextArea area = new JTextArea(message, 6, 42);
+        area.setEditable(false);
+        area.setLineWrap(true);
+        area.setWrapStyleWord(true);
+        area.setOpaque(false);
+        return area;
+    }
+
+    // The Hub panel's own pre-install checks and dialogs, so no safety prompt is skipped here.
+    boolean confirmInstall(MicrobotPluginManifest manifest, String version) {
+        return MicrobotPluginHubPanel.confirmInstall(this, microbotPluginManager, manifest, version);
     }
 
     public void rebuildPluginList() {

@@ -337,6 +337,7 @@ class MicrobotPluginListItem extends JPanel implements SearchablePlugin
 			: status.getKind() == MicrobotPluginRowStatus.Kind.UPDATE ? MicrobotPluginHubPanel.PASTEL_ORANGE : ColorScheme.PROGRESS_INPROGRESS_COLOR;
 	}
 
+
 	static String htmlBody(String html)
 	{
 		return html
