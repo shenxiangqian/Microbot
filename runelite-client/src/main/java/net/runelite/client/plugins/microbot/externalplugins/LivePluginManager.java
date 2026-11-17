@@ -4,10 +4,13 @@ import com.google.common.hash.Hashing;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
@@ -51,6 +54,7 @@ import net.runelite.client.plugins.microbot.Microbot;
 public class LivePluginManager {
     private static final String CONFIG_GROUP = "microbotPluginManager";
     private static final String PLUGIN_DIRECTORY_KEY = "pluginDirectory";
+    private static final String WATCH_FOLDER_KEY = "watchFolder";
     private final PluginManager plugins;
     private final ConfigManager config;
     private final EventBus events;
@@ -193,12 +197,6 @@ public class LivePluginManager {
         if (!Files.exists(file) || installed.values().stream().anyMatch(i -> i.source.equals(file))) {
             throw new IllegalArgumentException("Plugin is not installed.");
         }
-        String digest = hash(file);
-        Properties origin = readOrigin(file);
-        boolean fromOrigin = hubId.equals(origin.getProperty("hubId")) && digest.equalsIgnoreCase(origin.getProperty("sha256", ""));
-        if (!fromOrigin && !hubId.equals(recordedHubInstall(file, digest))) {
-            throw new IllegalArgumentException(file.getFileName() + " was not installed from the Plugin Hub. Remove it in Local Plugins.");
-        }
         Files.deleteIfExists(file);
         skipped.remove(file);
         Files.deleteIfExists(originPath(file));
@@ -240,7 +238,7 @@ public class LivePluginManager {
         }
 
         boolean resumeWatching = watching;
-        setWatching(false);
+        applyWatching(false);
         try {
             unloadManagedPluginsKeepingFiles();
             pluginDirectory = next;
@@ -251,7 +249,7 @@ public class LivePluginManager {
             observed = Collections.emptyMap();
             OperationResult scanned = scan(false);
             if (resumeWatching) {
-                setWatching(true);
+                applyWatching(true);
             }
             return scanned.isSuccess()
                     ? OperationResult.success("Plugin folder changed. JAR files remain in their previous folders.")
@@ -268,7 +266,7 @@ public class LivePluginManager {
             observed = Collections.emptyMap();
             OperationResult restored = scan(false);
             if (resumeWatching) {
-                setWatching(true);
+                applyWatching(true);
             }
             if (!restored.isSuccess()) {
                 detail += "\nPrevious folder recovery also reported errors:\n" + restored.getMessage();
@@ -330,13 +328,25 @@ public class LivePluginManager {
         if (!result.success) {
             log.warn("Some local plugins could not be loaded: {}", result.message);
         }
+        if ("true".equals(config.getConfiguration(CONFIG_GROUP, WATCH_FOLDER_KEY))) {
+            applyWatching(true);
+        }
     }
 
     public boolean isWatching() {
         return watching;
     }
 
+    /** The user's choice: remembered in the profile and restored at the next start. */
     public synchronized void setWatching(boolean enabled) {
+        applyWatching(enabled);
+        if (!closed && !safeMode) {
+            config.setConfiguration(CONFIG_GROUP, WATCH_FOLDER_KEY, enabled);
+        }
+    }
+
+    // Internal stops (shutdown, a folder change) leave the saved choice alone. A failed watch saves "off" itself.
+    private synchronized void applyWatching(boolean enabled) {
         if (closed || safeMode) {
             watching = false;
             return;
@@ -355,7 +365,7 @@ public class LivePluginManager {
     }
 
     public synchronized CompletableFuture<OperationResult> shutdown() {
-        setWatching(false);
+        applyWatching(false);
         CompletableFuture<OperationResult> result = submit(() -> {
             List<String> errors = new ArrayList<>();
             Set<Installation> remaining = new HashSet<>(installed.values());
@@ -890,6 +900,7 @@ public class LivePluginManager {
                     skipped.put(source, digest);
                 }
                 failures.add(source.getFileName() + ": " + message(failure));
+                log.warn("Could not load local plugin {}: {}", source.getFileName(), failure.toString());
                 if (startup) {
                     reportLoadFailure(source, message(failure));
                 }
@@ -945,19 +956,30 @@ public class LivePluginManager {
                 if (!current.equals(expected)) {
                     OperationResult result = scan(false);
                     if (!result.success) {
-                        watching = false;
-                        watchStatus = watchStopped(result.message);
-                        log.warn("Plugin folder watch stopped: {}", result.message);
+                        watchFailed(result.message);
                     }
                     publish();
                 }
             }
             observed = current;
         } catch (Exception | LinkageError | AssertionError failure) {
-            watching = false;
-            watchStatus = watchStopped(message(failure));
-            log.warn("Plugin folder watch stopped: {}", message(failure));
+            watchFailed(message(failure));
             publish();
+        }
+    }
+
+    // The box unticks when the watch stops on a bad JAR, so save "off" too: the next start matches what the user saw.
+    private synchronized void watchFailed(String detail) {
+        if (closed) {
+            return; // shutdown() cancelled this scan mid-run; keep the saved choice for the next start
+        }
+        watching = false;
+        watchStatus = watchStopped(detail);
+        log.warn("Plugin folder watch stopped: {}", detail);
+        try {
+            config.setConfiguration(CONFIG_GROUP, WATCH_FOLDER_KEY, false);
+        } catch (RuntimeException saveFailure) {
+            log.warn("Could not save that folder watching stopped", saveFailure);
         }
     }
 
@@ -1029,6 +1051,9 @@ public class LivePluginManager {
         Properties values = new Properties();
         values.setProperty("hubId", current.hubId);
         values.setProperty("sha256", current.expectedHash);
+        if (Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) && values.equals(readOrigin(current.source))) {
+            return;
+        }
         Path temporary = Files.createTempFile(pluginDirectory, ".origin-", ".tmp");
         try {
             try (OutputStream output = Files.newOutputStream(temporary)) {
@@ -1042,6 +1067,9 @@ public class LivePluginManager {
 
     private void replaceFile(Path source, Path target) throws Exception {
         checkManagedPath(target);
+        if (Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) && hash(target).equals(hash(source))) {
+            return;
+        }
         Path temporary = Files.createTempFile(pluginDirectory, ".install-", ".tmp");
         try {
             Files.copy(source, temporary, StandardCopyOption.REPLACE_EXISTING);
@@ -1096,8 +1124,34 @@ public class LivePluginManager {
         }
     }
 
-    private static String message(Throwable failure) {
-        return failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage();
+    static String message(Throwable failure) {
+        if (!(failure instanceof FileSystemException)) {
+            return failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage();
+        }
+        FileSystemException fileFailure = (FileSystemException) failure;
+        String name = fileName(fileFailure.getOtherFile() != null ? fileFailure.getOtherFile() : fileFailure.getFile());
+        String reason = fileFailure.getReason();
+        if (failure instanceof AccessDeniedException
+                || (reason != null && reason.toLowerCase(Locale.ROOT).contains("used by another process"))) {
+            return "Microbot was not allowed to change " + name
+                    + ". Another Microbot client may be using it: close the other clients and try again."
+                    + " If no other client is open, check that the file or folder is not read-only.";
+        }
+        if (failure instanceof NoSuchFileException) {
+            return name + " is no longer in the plugin folder."
+                    + " Put it back or reinstall it from the Plugin Hub, then refresh.";
+        }
+        return "Could not access " + name
+                + (reason == null || reason.trim().isEmpty() ? "" : " (" + reason.trim() + ")")
+                + ". Check that the plugin folder is readable and writable and that no other client is open.";
+    }
+
+    private static String fileName(String path) {
+        if (path == null) {
+            return "a plugin file";
+        }
+        String name = path.substring(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1);
+        return name.isEmpty() ? "a plugin file" : name;
     }
 
     private void checkLoadPolicy(LivePluginArtifact candidate) throws LivePluginArtifact.BlockedPluginException {

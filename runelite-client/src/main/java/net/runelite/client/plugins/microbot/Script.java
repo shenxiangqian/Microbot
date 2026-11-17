@@ -2,10 +2,15 @@ package net.runelite.client.plugins.microbot;
 
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.ChatMessageType;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.callback.ClientThread;
+import net.runelite.client.callback.ClientThread;
+import net.runelite.client.plugins.Plugin;
+import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.PluginManager;
 import net.runelite.client.plugins.microbot.util.Global;
 import net.runelite.client.plugins.microbot.agentserver.handler.ScriptHeartbeatRegistry;
 import net.runelite.client.plugins.microbot.diagnostics.FlightRecorder;
@@ -40,6 +45,8 @@ import java.util.concurrent.atomic.AtomicReference;
 public abstract class Script extends Global implements IScript {
     static final long EXECUTOR_KEEP_ALIVE_SECONDS = 60;
     private final AtomicBoolean startAnnounced = new AtomicBoolean();
+    private final AtomicBoolean pauseWaitAnnounced = new AtomicBoolean();
+    private volatile String announcedPauseWaitName;
 
     private void announceStart() {
         if (Microbot.getEventBus() != null && startAnnounced.compareAndSet(false, true)) {

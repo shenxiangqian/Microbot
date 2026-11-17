@@ -19,6 +19,7 @@ import net.runelite.client.plugins.devtools.MovementFlag;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.globval.enums.InterfaceTab;
 import net.runelite.client.plugins.microbot.shortestpath.*;
+import net.runelite.client.plugins.microbot.shortestpath.pathfinder.UnreachableRouteExplainer;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.bank.enums.BankLocation;
 import net.runelite.client.plugins.microbot.util.camera.Rs2Camera;
@@ -597,6 +598,7 @@ public class Rs2Walker {
         routeState.adjacentRefusalTo = null;
         routeState.adjacentRefusalAtMs = 0L;
         routeState.adjacentRefusalSinceMs = 0L;
+        routeState.adjacentRefusalDoorAttempted = false;
         routeState.requestedGoal = null;
         routeState.sealedRimRetargets = 0;
         resetRouteProgress();
@@ -1480,6 +1482,7 @@ public class Rs2Walker {
     private static WalkerState walkWithStateInternal(WorldPoint target, int distance) {
         Objects.requireNonNull(target, "walk target");
         currentWalkDistance = Math.max(0, distance);
+        lastUnreachableReason = null;
         if (isClientThread()) {
             log.warn("Please do not call the walker from the main thread");
             return WalkerState.EXIT;
@@ -1612,6 +1615,7 @@ public class Rs2Walker {
      * {@link #setTarget(WorldPoint, String) setTarget(null, reason)} when you stop (e.g. once you interact).
      */
     public static WalkerState walkStep(WorldPoint target, int distance) {
+        lastUnreachableReason = null;
         if (config == null) {
             return WalkerState.EXIT;
         }
@@ -1935,6 +1939,8 @@ public class Rs2Walker {
         Telemetry.recordUnreachable("route-stagnation-exhausted", Rs2Player.getWorldLocation(),
                 target, endpoint, path == null ? 0 : path.size(), distance,
                 Rs2PathApi.getActiveRouteStatus().getMetrics().orElse(null));
+        recordUnreachableReason(target, "the walker got stuck on the way and stopped."
+                + " Walk past the obstacle and try again.");
         setTarget(null, "rs2walker:processWalk:route-stagnation-exhausted");
         return WalkerState.UNREACHABLE;
     }
@@ -2115,6 +2121,7 @@ public class Rs2Walker {
             if (!DraynorBasementSolver.isBasementTarget(Rs2Player.getWorldLocation())) {
                 WebWalkLog.spWarn("basement_entry_failed | target={} at={} - refusing disconnected partial route",
                         target, Rs2Player.getWorldLocation());
+                recordUnreachableReason(target, "the walker could not get into the Draynor Manor basement.");
                 setTarget(null, "rs2walker:processWalk:basement-entry-failed");
                 return WalkerState.UNREACHABLE;
             }
@@ -2151,6 +2158,8 @@ public class Rs2Walker {
                     nearestWalkable != null ? nearestWalkable : "none within 48");
             Telemetry.recordUnreachable("target-not-walkable", Rs2Player.getWorldLocation(),
                     target, nearestWalkable, 0, distance, null);
+            lastUnreachableReason = "Can't reach " + target.getX() + ", " + target.getY()
+                    + ": there is no tile you can stand on at or next to it.";
             setTarget(null, "rs2walker:processWalk:target-not-walkable");
             return WalkerState.UNREACHABLE;
         }
@@ -2358,10 +2367,12 @@ public class Rs2Walker {
                     WebWalkLog.partialSegment(dst, dst.distanceTo(target), target, path.size());
                     partialPath = true;
                 } else {
-                    Telemetry.recordUnreachable("no-walkable-path", walkLoop.playerLoc,
+                    String cause = searchExhausted ? "search-exhausted" : "no-walkable-path";
+                    Telemetry.recordUnreachable(cause, walkLoop.playerLoc,
                             target, dst, path == null ? 0 : path.size(), distance,
                             routeStatus.getMetrics().orElse(null));
-                    setTarget(null, "rs2walker:processWalk:no-walkable-path");
+                    explainUnreachable(target, walkLoop.playerLoc, dst);
+                    setTarget(null, "rs2walker:processWalk:" + cause);
                     return WalkerState.UNREACHABLE;
                 }
             }
@@ -3778,6 +3789,8 @@ public class Rs2Walker {
                 Telemetry.recordUnreachable("partial-retries-exhausted", Rs2Player.getWorldLocation(),
                         target, unreachableEndpoint, path.size(), distance,
                         Rs2PathApi.getActiveRouteStatus().getMetrics().orElse(null));
+                recordUnreachableReason(target, "the walker could only find part of the route and stopped."
+                        + " Try again from closer, or raise Calculation cutoff in the Web Walker settings.");
                 setTarget(null, "rs2walker:processWalk:partial-retries-exhausted");
                 return WalkerState.UNREACHABLE;
             } else {
@@ -6886,6 +6899,13 @@ public class Rs2Walker {
         WalledDoorClaimPolicy.Decision decision = WalledDoorClaimPolicy.decide(
                 from, to, claimedAtMs, now, playerLoc, Rs2Player.isMoving(),
                 from != null && Rs2Tile.isTileReachable(from), maxAgeMs);
+        if (WalledDoorClaimPolicy.dispatchesAdjacentDoorHandler(decision)
+                && WalledDoorClaimPolicy.isAdjacentClaimEdge(routeState.adjacentRefusalFrom,
+                routeState.adjacentRefusalTo, from, to)
+                && handleDoorAdjacentToClaimedEdge(from, to, playerLoc, routePath)
+                == WalledDoorClaimPolicy.AdjacentDoorOutcome.ATTEMPTED) {
+            return WalkExit.DOOR_HANDLED_LOCAL_REACHABILITY_RAW_SCAN;
+        }
         switch (decision) {
             case CROSSED:
                 if (attempted != null) {
@@ -8360,6 +8380,7 @@ public class Rs2Walker {
      * @return true if travel was successful, false otherwise
      */
     public static WalkerState walkWithBankedTransportsAndState(WorldPoint target, int distance, boolean forceBanking) {
+        lastUnreachableReason = null;
         if (target == null) {
             log.warn("Cannot travel to null target location");
             return WalkerState.EXIT;
@@ -8514,6 +8535,7 @@ public class Rs2Walker {
                 && !Rs2WalkerBankingPlanner.hasCarriedConsumablesForRoute(
                         comparison.getDirectTransportEdges())) {
             WebWalkLog.spWarn("bank_walk | direct route cannot fund selected transports goal={}", target);
+            recordUnreachableReason(target, "the route needs coins, runes or items you are not carrying.");
             return WalkerState.UNREACHABLE;
         }
         return walkWithStateInternal(target, distance);
