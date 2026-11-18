@@ -1317,6 +1317,18 @@ public class PathfinderConfig {
                 .orElse(0);
     }
 
+    static boolean hasAvailableCurrencyForFare(int carried, int banked, int fare,
+                                               boolean useBankItems) {
+        return (long) Math.max(0, carried) + (useBankItems ? Math.max(0, banked) : 0) >= fare;
+    }
+
+    /** The refresh snapshot already includes bank quantities when {@code useBankItems} is enabled. */
+    static int knownCurrencyQuantity(String currencyName, Map<Integer, Integer> availableQuantities) {
+        int itemId = currencyItemId(currencyName);
+        return itemId < 0 || availableQuantities == null
+                ? -1 : availableQuantities.getOrDefault(itemId, 0);
+    }
+
     private boolean useTransport(Transport transport, boolean inCombat) {
         return transportRejection(transport, inCombat) == null;
     }

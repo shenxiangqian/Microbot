@@ -2067,6 +2067,18 @@ public class Rs2Walker {
         return false;
     }
 
+    private static volatile String lastUnreachableReason;
+
+    public static String getLastUnreachableReason() {
+        return lastUnreachableReason;
+    }
+
+    private static final long UNREACHABLE_EXPLANATION_REUSE_MS = 60_000L;
+    private static WorldPoint explainedTarget;
+    private static WorldPoint explainedFrom;
+    private static String explainedReason;
+    private static long explainedAt;
+
     /**
      * 记录一轮 processWalk 尾循环的耗时，供预点击半径换算提前量使用。
      *
@@ -2088,6 +2100,31 @@ public class Rs2Walker {
         routeState.tailCycleEmaMs = routeState.tailCycleEmaMs <= 0.0
                 ? cycle
                 : routeState.tailCycleEmaMs * 0.7 + cycle * 0.3;
+    }
+
+    private static void explainUnreachable(WorldPoint target, WorldPoint player, WorldPoint closest) {
+        synchronized (Rs2Walker.class) {
+            if (explainedReason != null && Objects.equals(target, explainedTarget) && Objects.equals(player, explainedFrom)
+                    && System.currentTimeMillis() - explainedAt < UNREACHABLE_EXPLANATION_REUSE_MS) {
+                lastUnreachableReason = explainedReason;
+                return;
+            }
+        }
+        String reason = UnreachableRouteExplainer.explain(Rs2PathApi.getPathfinderConfig(), player, target, closest);
+        synchronized (Rs2Walker.class) {
+            explainedTarget = target;
+            explainedFrom = player;
+            explainedReason = reason;
+            explainedAt = System.currentTimeMillis();
+        }
+        lastUnreachableReason = reason;
+        log.warn("[Walker] {}", reason);
+    }
+
+    private static void recordUnreachableReason(WorldPoint target, String detail) {
+        String reason = "Can't reach " + target.getX() + ", " + target.getY() + ": " + detail;
+        lastUnreachableReason = reason;
+        log.warn("[Walker] {}", reason);
     }
 
     private static WalkerState processWalk(WorldPoint target, int distance) {
@@ -2363,6 +2400,8 @@ public class Rs2Walker {
                     }
                     return processWalk(sealedRim, distance, session.partialRetriesInitial);
                 }
+                boolean searchExhausted = routeStatus.getTerminationReason().orElse(null)
+                        == Rs2RouteTermination.SEARCH_EXHAUSTED;
                 if (path != null && path.size() > 1) {
                     WebWalkLog.partialSegment(dst, dst.distanceTo(target), target, path.size());
                     partialPath = true;
