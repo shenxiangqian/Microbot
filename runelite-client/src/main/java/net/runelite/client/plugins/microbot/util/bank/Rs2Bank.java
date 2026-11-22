@@ -2475,7 +2475,8 @@ public class Rs2Bank {
                 .map(BankLocation::getWorldPoint)
                 .collect(Collectors.toSet());
 
-        Rs2RouteRequest request = Rs2RouteRequest.toAny(worldPoint, targets);
+        Rs2RouteRequest request = Rs2RouteRequest.toAny(worldPoint, targets)
+                .withRefreshPolicy(Rs2RouteRequest.RefreshPolicy.ALWAYS);
         if (useBankItems != null) {
             request = request.withBankItems(useBankItems);
         }
@@ -3423,6 +3424,8 @@ public class Rs2Bank {
     public static boolean scrollBankToSlot(int slotId) {
         Widget w = Microbot.getClient().getWidget(BANK_ITEM_CONTAINER);
         if (w == null) return false;
+        int currentTab = getCurrentTab();
+        if (currentTab < 0 || currentTab > bankTabCounts.length) return false;
         int scrollY = calculateScrollYFromSlotId(slotId);
 
         Microbot.getClientThread().invokeLater(() -> {
