@@ -395,16 +395,18 @@ public class ShortestPathPlugin extends Plugin {
         final long scheduleTime = System.currentTimeMillis();
         getClientThread().invokeLater(() -> {
             if (pathRequestRevision.get() != requestRevision || finalExecutor.isShutdown()) {
-                return;
+                return true;
             }
             long invokeLaterDelay = System.currentTimeMillis() - scheduleTime;
             long refreshStart = System.currentTimeMillis();
-            pathfinderConfig.refresh();
+            if (!pathfinderConfig.tryRefresh()) {
+                return false;
+            }
             long refreshTime = System.currentTimeMillis() - refreshStart;
             pathfinderConfig.filterLocations(ends, canReviveFiltered);
             synchronized (pathfinderMutex) {
                 if (pathRequestRevision.get() != requestRevision || finalExecutor.isShutdown()) {
-                    return;
+                    return true;
                 }
                 if (ends.isEmpty()) {
                     setTarget(null);
@@ -415,6 +417,7 @@ public class ShortestPathPlugin extends Plugin {
             }
             log.info("[ShortestPath] restartPathfinding: invokeLater delay={}ms, config.refresh={}ms",
                     invokeLaterDelay, refreshTime);
+            return true;
         });
     }
 
@@ -648,8 +651,9 @@ public class ShortestPathPlugin extends Plugin {
     void handlePendingLoginRefresh() {
         if (pendingLoginRefresh && pathfinderConfig != null) {
             try {
-                pathfinderConfig.refresh();
-                pendingLoginRefresh = false;
+                if (pathfinderConfig.tryRefresh()) {
+                    pendingLoginRefresh = false;
+                }
             } catch (Exception e) {
                 log.warn("[ShortestPath] post-login refresh failed", e);
             }

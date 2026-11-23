@@ -1701,10 +1701,14 @@ public class Rs2Player {
      * @return The distance between the player's current location and the endpoint.
      */
     public static int distanceTo(WorldPoint endpoint) {
-        if (Microbot.getClient().getTopLevelWorldView().getScene().isInstance()) {
-            return getWorldLocation().distanceTo(endpoint);
+        WorldPoint location = getWorldLocation();
+        if (location == null || endpoint == null) {
+            return Integer.MAX_VALUE;
         }
-        return Rs2Walker.getDistanceBetween(getWorldLocation(), endpoint);
+        if (Microbot.getClient().getTopLevelWorldView().getScene().isInstance()) {
+            return location.distanceTo(endpoint);
+        }
+        return Rs2Walker.getDistanceBetween(location, endpoint);
     }
 
     /**
@@ -1930,6 +1934,13 @@ public class Rs2Player {
             menuAction = MenuAction.WIDGET_TARGET_ON_PLAYER;
         }
 
+        Rectangle clickArea = menuAction == MenuAction.WALK
+                ? Rs2UiHelper.getActorClickbox(rs2Player)
+                : Rs2UiHelper.clearActorClickArea(rs2Player, rs2Player.getName());
+        if (clickArea == null) {
+            return false;
+        }
+
         // Invoke the menu entry using the selected action
         Microbot.doInvoke(
                 new NewMenuEntry()
@@ -1940,7 +1951,7 @@ public class Rs2Player {
                         .itemId(-1)
                         .target(rs2Player.getName())
                         .actor(rs2Player),
-                Rs2UiHelper.getActorClickbox(rs2Player)
+                clickArea
         );
 
         return true;
