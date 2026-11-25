@@ -776,13 +776,6 @@ final class Rs2WalkerTransports {
                         }
                     }
 
-                    if (transport.getType() == TransportType.WILDERNESS_OBELISK) {
-                        if (attemptObserved(transport, () -> handleWildernessObelisk(transport))) {
-                            sleepTickJitter(2);
-                            return finishHandledTransport(transport);
-                        }
-                    }
-
                     if (transport.getType() == TransportType.GNOME_GLIDER) {
                         if (attemptObserved(transport, () -> handleGlider(transport))) {
                             sleepUntil(() -> !Rs2Player.isAnimating());
@@ -1303,6 +1296,12 @@ final class Rs2WalkerTransports {
         }
         if (isGuidorGateTransport(transport)) {
             return handleGuidorGateSearch(transport);
+        }
+        if (isFeroxCastleWarsPortalTransport(transport)) {
+            return handleFeroxCastleWarsPortal(transport);
+        }
+        if (isFeroxEnclaveBarrierTransport(transport)) {
+            return handleFeroxEnclaveBarrier(transport);
         }
         if (handleObjectExceptions(transport, tileObject)) return true;
         WorldPoint tdObj = transport.getDestination();
@@ -1980,6 +1979,92 @@ final class Rs2WalkerTransports {
         return reachedDestination;
     }
 
+    static boolean isFeroxCastleWarsPortalTransport(Transport transport) {
+        return transport != null
+                && transport.getType() == TransportType.TELEPORTATION_PORTAL
+                && transport.getObjectId() == ObjectID.CASTLEWARS_F2P_PORTAL;
+    }
+
+    static boolean hasLandedFromFeroxCastleWarsPortal(Transport transport, WorldPoint playerLocation) {
+        WorldPoint destination = transport == null ? null : transport.getDestination();
+        return isFeroxCastleWarsPortalTransport(transport)
+                && playerLocation != null
+                && destination != null
+                && playerLocation.getPlane() == destination.getPlane()
+                && playerLocation.distanceTo2D(destination) < OFFSET;
+    }
+
+    private static boolean handleFeroxCastleWarsPortal(Transport transport) {
+        AtomicBoolean confirmed = new AtomicBoolean(false);
+        boolean landed = sleepUntil(() -> hasLandedFromFeroxCastleWarsPortal(transport, Rs2Player.getWorldLocation()),
+                () -> {
+                    if (Rs2Dialogue.hasSelectAnOption()) {
+                        if (!Rs2Dialogue.isOptionSelectionPending() && Rs2Dialogue.clickOption("Yes")) {
+                            confirmed.set(true);
+                        }
+                    } else if (Rs2Dialogue.hasContinue()) {
+                        Rs2Dialogue.clickContinue();
+                    }
+                },
+                FEROX_CASTLE_WARS_PORTAL_WAIT_MS,
+                Rs2Random.between(600, 800));
+        if (!landed) {
+            WebWalkLog.spWarn(
+                    "Ferox Castle Wars portal teleport unresolved confirmed={} dest={} at={}",
+                    confirmed.get(),
+                    compactWorldPoint(transport.getDestination()),
+                    compactWorldPoint(Rs2Player.getWorldLocation()));
+        }
+        return landed;
+    }
+
+    private static final String FEROX_ENCLAVE_BARRIER_WARNING_TEXT = "when returning to the enclave";
+    static final String FEROX_ENCLAVE_BARRIER_DONT_ASK_OPTION = "don't ask";
+    private static final String FEROX_ENCLAVE_BARRIER_YES_OPTION = "Yes";
+    private static final int FEROX_ENCLAVE_BARRIER_WAIT_MS = 12_000;
+
+    static boolean isFeroxEnclaveBarrierTransport(Transport transport) {
+        return transport != null
+                && (transport.getObjectId() == ObjectID.WILDY_HUB_ENTRY_BARRIER
+                || transport.getObjectId() == ObjectID.WILDY_HUB_ENTRY_BARRIER_M);
+    }
+
+    static boolean isFeroxEnclaveBarrierWarning(String dialogueText) {
+        return dialogueText != null
+                && dialogueText.toLowerCase(Locale.ROOT).contains(FEROX_ENCLAVE_BARRIER_WARNING_TEXT);
+    }
+
+    private static boolean handleFeroxEnclaveBarrier(Transport transport) {
+        WorldPoint destination = transport.getDestination();
+        AtomicBoolean answered = new AtomicBoolean(false);
+        boolean crossed = sleepUntil(() -> isPlayerWithinChebyshevInclusive(destination, 0),
+                () -> {
+                    if (Rs2Dialogue.hasSelectAnOption()) {
+                        if (Rs2Dialogue.isOptionSelectionPending()) {
+                            return;
+                        }
+                        if (Rs2Dialogue.keyPressForDialogueOption(FEROX_ENCLAVE_BARRIER_DONT_ASK_OPTION)) {
+                            answered.set(true);
+                            Microbot.log("Turned off the Ferox Enclave leave warning for this account (chose 'don't ask again' in the game dialogue).");
+                        } else if (Rs2Dialogue.clickOption(FEROX_ENCLAVE_BARRIER_YES_OPTION)) {
+                            answered.set(true);
+                        }
+                    } else if (isFeroxEnclaveBarrierWarning(Rs2Dialogue.getDialogueText())) {
+                        Rs2Dialogue.clickContinue();
+                    }
+                },
+                FEROX_ENCLAVE_BARRIER_WAIT_MS,
+                Rs2Random.between(600, 800));
+        if (!crossed) {
+            WebWalkLog.spWarn(
+                    "Ferox Enclave barrier crossing unresolved answered={} dest={} at={}",
+                    answered.get(),
+                    compactWorldPoint(destination),
+                    compactWorldPoint(Rs2Player.getWorldLocation()));
+        }
+        return crossed;
+    }
+
     private static boolean handleObjectExceptions(Transport transport, TileObject tileObject) {
         for (Map.Entry<Integer, Integer> entry : OPEN_TO_CLOSED_MAPPINGS.entrySet()) {
             final int closedTrapdoorId = entry.getKey();
@@ -2027,18 +2112,6 @@ final class Rs2WalkerTransports {
                 sleepUntil(() -> !Rs2Player.isMoving() && !Rs2Player.isAnimating());
             }
             return true;
-        }
-        // Handle Ferox Encalve Barrier
-        if (tileObject.getId() == ObjectID.WILDY_HUB_ENTRY_BARRIER || tileObject.getId() == ObjectID.WILDY_HUB_ENTRY_BARRIER_M) {
-            if (Rs2Dialogue.isInDialogue()) {
-                if (Rs2Dialogue.getDialogueText().toLowerCase().contains("when returning to the enclave")) {
-                    Rs2Dialogue.clickContinue();
-                    Rs2Dialogue.sleepUntilSelectAnOption();
-                    Rs2Dialogue.keyPressForDialogueOption("Yes, and don't ask again.");
-                    Rs2Dialogue.sleepUntilNotInDialogue();
-                    return true;
-                }
-            }
         }
         // Handle Cobwebs blocking path
         if (tileObject.getId() == ObjectID.BIGWEB_SLASHABLE && !Rs2Equipment.isWearing(ItemID.ARANEA_BOOTS)) {
@@ -2154,23 +2227,6 @@ final class Rs2WalkerTransports {
         // Handle Magic Mushtree (Fossil Island Mycelium Transportation System)
         if (MagicMushtree.isMagicMushtree(tileObject)) {
             return MagicMushtree.handleTransport(transport);
-        }
-        return false;
-    }
-
-    private static boolean handleWildernessObelisk(Transport transport) {
-        GameObject obelisk = Rs2WalkerSceneObjects.first(GameObject.class, obj -> obj.getId() == transport.getObjectId(), transport.getOrigin(), Constants.SCENE_SIZE / 2);
-
-        if (obelisk != null) {
-            Rs2WalkerSceneObjects.interact(obelisk, transport.getAction());
-            sleepUntil(() -> Rs2WalkerSceneObjects.first(GameObject.class, obj -> obj.getId() == transport.getObjectId(), transport.getOrigin(), Constants.SCENE_SIZE / 2) != null);
-            walkFastCanvasWithAutoRun(transport.getOrigin());
-            return sleepUntilTrue(() -> {
-                WorldPoint pl = Rs2Player.getWorldLocation();
-                WorldPoint td = transport.getDestination();
-                return pl != null && td != null && pl.getPlane() == td.getPlane()
-                        && pl.distanceTo2D(td) < OFFSET;
-            }, 100, 10000);
         }
         return false;
     }
@@ -2441,14 +2497,20 @@ final class Rs2WalkerTransports {
         if (rs2Item == null) return false;
         if (transport.getDisplayInfo().contains(":")) {
             String destination = teleportItemLeafAction(transport.getDisplayInfo());
+            boolean hasDestinationSubAction = rs2Item.getIndexOfSubAction(destination) != null;
+            String categoryAction = wornTeleportCategoryAction(transport.getDisplayInfo(),
+                    rs2Item.getEquipmentActions(), hasDestinationSubAction, destination);
 
             if (transport.getDisplayInfo().toLowerCase().contains("slayer ring")) {
                 if (!Rs2Equipment.invokeMenu(rs2Item, "teleport")) return false;
                 Rs2Dialogue.sleepUntilSelectAnOption();
                 Rs2Dialogue.clickOption(destination);
             } else if (usesGenericWornTeleport(transport.getDisplayInfo(), rs2Item.getEquipmentActions(),
-                    rs2Item.getIndexOfSubAction(destination) != null, destination)) {
+                    hasDestinationSubAction, destination)) {
                 if (!Rs2Equipment.invokeMenu(rs2Item, WORN_GENERIC_TELEPORT_ACTION)) return false;
+                if (!Rs2Dialogue.sleepUntilSelectAnOption() || !Rs2Dialogue.clickOption(destination)) return false;
+            } else if (categoryAction != null) {
+                if (!Rs2Equipment.invokeMenu(rs2Item, categoryAction)) return false;
                 if (!Rs2Dialogue.sleepUntilSelectAnOption() || !Rs2Dialogue.clickOption(destination)) return false;
             } else {
                 if (!Rs2Equipment.invokeMenu(rs2Item, wornTeleportAction(destination, rs2Item.getEquipmentActions()))) return false;
@@ -2500,6 +2562,34 @@ final class Rs2WalkerTransports {
             }
         }
         return hasGenericAction;
+    }
+
+    static String wornTeleportCategoryAction(String displayInfo, List<String> equipmentActions,
+                                             boolean hasDestinationSubAction, String destination) {
+        if (displayInfo == null || hasDestinationSubAction || equipmentActions == null
+                || destination == null || destination.isEmpty()) {
+            return null;
+        }
+        String[] segments = displayInfo.split(":");
+        if (segments.length < 3) {
+            return null;
+        }
+        String category = segments[segments.length - 2].trim().toLowerCase(Locale.ROOT);
+        if (category.isEmpty()) {
+            return null;
+        }
+        boolean hasCategoryAction = false;
+        for (String equipmentAction : equipmentActions) {
+            if (equipmentAction == null) continue;
+            String lowerAction = equipmentAction.toLowerCase(Locale.ROOT);
+            if (lowerAction.contains(destination)) {
+                return null;
+            }
+            if (lowerAction.contains(category)) {
+                hasCategoryAction = true;
+            }
+        }
+        return hasCategoryAction ? category : null;
     }
 
     /**

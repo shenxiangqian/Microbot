@@ -302,6 +302,9 @@ public class MicrobotPluginHubPanel extends MicrobotPluginPanel {
 
             JLabel description = new JLabel(descriptionText);
             description.setVerticalAlignment(JLabel.TOP);
+            if (ClientTheme.redesign()) {
+                description.setForeground(ColorScheme.TEXT_COLOR);
+            }
             description.setToolTipText(descriptionText);
 
             JLabel icon = new PluginIcon(Strings.nullToEmpty(manifest.getIconUrl()));
@@ -455,9 +458,11 @@ public class MicrobotPluginHubPanel extends MicrobotPluginPanel {
 				installed && microbotPluginManager.getPluginHealth(manifest, selectedVersion).isBlocking(), outdated);
 			Color color = state == MicrobotPluginHubOrder.State.BLOCKED ? HEALTH_RED
 				: state == MicrobotPluginHubOrder.State.UPDATE ? PASTEL_ORANGE : PASTEL_GREEN;
+			Color borderColor = state == MicrobotPluginHubOrder.State.INSTALLED
+				? ClientTheme.classicOr(color, ColorScheme.MEDIUM_GRAY_COLOR) : color;
 			setBorder(state == MicrobotPluginHubOrder.State.NONE
 				? BorderFactory.createEmptyBorder(2, 2, 2, 2)
-				: BorderFactory.createLineBorder(color, 2));
+				: BorderFactory.createLineBorder(borderColor, 2));
 			stateLabel.setText(state.text(microbotPluginManager.getPluginHealth(manifest, selectedVersion), outdated));
 			stateLabel.setForeground(color);
 			stateLabel.setVisible(state != MicrobotPluginHubOrder.State.NONE);
@@ -779,6 +784,9 @@ public class MicrobotPluginHubPanel extends MicrobotPluginPanel {
 
         searchBar = new IconTextField();
         searchBar.setIcon(IconTextField.Icon.SEARCH);
+        if (ClientTheme.redesign()) {
+            searchBar.setPlaceholderText("Search the Hub");
+        }
         searchBar.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         searchBar.setHoverBackgroundColor(ColorScheme.DARK_GRAY_HOVER_COLOR);
         searchBar.getSuggestionListModel().addElement(MicrobotPluginHubOrder.NEWLY_ADDED_FILTER_QUERY);
