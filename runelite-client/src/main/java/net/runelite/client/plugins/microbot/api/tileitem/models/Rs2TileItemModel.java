@@ -218,7 +218,7 @@ public class Rs2TileItemModel implements TileItem, IEntity {
         return click("Take");
     }
 
-    public boolean click(String action) {
+    public boolean clickNew(String action) {
         if (action == null) return false;
         try {
             int param0;
@@ -292,8 +292,98 @@ public class Rs2TileItemModel implements TileItem, IEntity {
                         : canvas.getBounds();
             }, () -> Rs2Camera.turnTo(localPoint1, Rs2UiHelper.COVERED_TURN_MAX_ANGLE), getName());
             if (bounds == null) {
+                Rs2Camera.turnTo(localPoint1);
                 return false;
             }
+            int worldViewId = localPoint1.getWorldView();
+            Microbot.doInvoke(new NewMenuEntry()
+                            .option(action)
+                            .target(target)
+                            .identifier(identifier)
+                            .opcode(menuAction.getId())
+                            .param0(param0)
+                            .param1(param1)
+                            .itemId(-1)
+                            .worldViewId(worldViewId),
+                    bounds);
+            return true;
+        } catch (Exception ex) {
+            Microbot.logStackTrace("Rs2TileItemModel", ex);
+            return false;
+        }
+    }
+
+    public boolean click(String action) {
+        if (action == null) return false;
+        try {
+            int param0;
+            int param1;
+            int identifier;
+            String target;
+            MenuAction menuAction;
+            ItemComposition item;
+
+            item = Microbot.getClientThread().runOnClientThreadOptional(() -> Microbot.getClient().getItemDefinition(getId())).orElse(null);
+            if (item == null) return false;
+            identifier = getId();
+
+            LocalPoint localPoint = getLocalLocation();
+            if (localPoint == null) return false;
+
+            param0 = localPoint.getSceneX();
+            target = "<col=ff9040>" + getName();
+            param1 = localPoint.getSceneY();
+
+            // Take is the protocol's third ground-item option. Only custom actions
+            // need discovery from the obfuscated item definition.
+            boolean pickup = action.equalsIgnoreCase("Take");
+            String[] groundActions = pickup
+                    ? new String[]{null, null, "Take"}
+                    : Microbot.getClientThread().runOnClientThreadOptional(
+                    () -> Rs2Reflection.getGroundItemActions(item)).orElse(new String[0]);
+
+            int index = -1;
+            if (action.isEmpty()) {
+                for (int i = 0; i < groundActions.length; i++) {
+                    if (groundActions[i] == null) {
+                        continue;
+                    }
+                    action = groundActions[i];
+                    index = i;
+                    break;
+                }
+            } else {
+                for (int i = 0; i < groundActions.length; i++) {
+                    String groundAction = groundActions[i];
+                    if (groundAction == null || !groundAction.equalsIgnoreCase(action)) continue;
+                    index = i;
+                    break;
+                }
+            }
+
+            if (index == -1) return false;
+
+            if (!pickup && Microbot.getClientThread().runOnClientThreadOptional(
+                    () -> Microbot.getClient().isWidgetSelected()).orElse(false)) {
+                menuAction = MenuAction.WIDGET_TARGET_ON_GROUND_ITEM;
+            } else {
+                menuAction = groundItemMenuAction(index);
+                if (menuAction == null) {
+                    log.warn("Unable to interact with ground item '{}' using action '{}'; actions={}", getName(), action, Arrays.toString(groundActions));
+                    return false;
+                }
+            }
+            LocalPoint localPoint1 = getLocalLocation();
+            if (localPoint1 == null) {
+                return false;
+            }
+            if (!Rs2Camera.isTileOnScreen(localPoint1)) {
+                Rs2Camera.turnTo(localPoint1);
+            }
+            Polygon canvas = Rs2Camera.getCanvasTilePoly(localPoint1).orElse(null);
+            Rectangle bounds = canvas == null
+                    ? new Rectangle(1, 1, Microbot.getClient().getCanvasWidth(), Microbot.getClient().getCanvasHeight())
+                    : canvas.getBounds();
             int worldViewId = localPoint1.getWorldView();
             Microbot.doInvoke(new NewMenuEntry()
                             .option(action)
