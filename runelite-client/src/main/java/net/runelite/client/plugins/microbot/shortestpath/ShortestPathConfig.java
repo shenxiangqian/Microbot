@@ -336,8 +336,8 @@ public interface ShortestPathConfig extends Config {
 
     @ConfigItem(
             keyName = "useWildernessObelisks",
-            name = "Use wilderness obelisks",
-            description = "Whether to include wilderness obelisks in the path",
+            name = "Use wilderness obelisks (not supported yet)",
+            description = "Not supported yet. Obelisks send you to a random obelisk, which the walker cannot plan for, so it always walks through the Wilderness instead, even when this is on.",
             position = 17,
             section = sectionSettings
     )
@@ -744,8 +744,8 @@ public interface ShortestPathConfig extends Config {
 	@ConfigItem(
 		keyName = "randomizeFinalTile",
 		name = "Randomize final tile",
-		description = "Whether to randomize the final tile of the path by a few tiles.<br>" +
-			"This can be disabled in situations where you want to be able to click on the final tile directly, such as when using the path for a script that requires precise clicking.",
+		description = "Ends walks on a random tile up to 3 tiles from the destination (never past a wall or closed door, and never further than Finish distance).<br>" +
+			"Turn this off if a script needs you to stand on an exact tile, such as a safespot or a fixed fishing or mining spot.",
 		position = 0,
 		section = sectionAdvanced
 	)

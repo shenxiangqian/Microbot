@@ -23,8 +23,9 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.border.MatteBorder;
 import net.runelite.client.plugins.microbot.alerts.BotAlertStatus;
 import net.runelite.client.plugins.microbot.alerts.DeviceLinkFlow;
+import net.runelite.client.ui.ClientTheme;
 import net.runelite.client.ui.ColorScheme;
-import net.runelite.client.ui.FontManager;
+import net.runelite.client.ui.PanelFonts;
 import net.runelite.client.util.LinkBrowser;
 
 @Singleton
@@ -53,7 +54,7 @@ public class MicrobotCloudPanel extends JPanel
 		setBorder(new CompoundBorder(new MatteBorder(1, 0, 0, 0, ColorScheme.MEDIUM_GRAY_COLOR), new EmptyBorder(4, 10, 4, 10)));
 
 		title.setForeground(ColorScheme.BRAND_ORANGE);
-		title.setFont(FontManager.getRunescapeBoldFont());
+		title.setFont(PanelFonts.bold());
 		title.setIconTextGap(6);
 		title.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		title.addMouseListener(new MouseAdapter()
@@ -65,25 +66,35 @@ public class MicrobotCloudPanel extends JPanel
 				onUsed.run();
 			}
 		});
-		JPanel header = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
-		header.add(title);
-		header.add(Box.createHorizontalStrut(6));
+		JPanel header;
 		newBadge.setVisible(false);
-		header.add(newBadge);
+		if (ClientTheme.redesign())
+		{
+			header = new JPanel(new BorderLayout(6, 0));
+			header.add(title, BorderLayout.CENTER);
+			header.add(newBadge, BorderLayout.EAST);
+		}
+		else
+		{
+			header = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+			header.add(title);
+			header.add(Box.createHorizontalStrut(6));
+			header.add(newBadge);
+		}
 		add(header, BorderLayout.NORTH);
 
 		body.setBorder(new EmptyBorder(4, 0, 0, 0));
 		JLabel alertsName = new JLabel("Bot alerts");
-		alertsName.setFont(FontManager.getRunescapeSmallFont());
+		alertsName.setFont(PanelFonts.small());
 		alertsName.setToolTipText("<html>Get a Discord or email alert when this client stops responding,<br>a script stops on an error or the game logs out</html>");
 		JPanel alertsRow = new JPanel(new BorderLayout(6, 0));
 		alertsRow.add(alertsName, BorderLayout.WEST);
-		alertStatus.setFont(FontManager.getRunescapeSmallFont());
+		alertStatus.setFont(PanelFonts.small());
 		alertStatus.setHorizontalAlignment(JLabel.RIGHT);
 		alertsRow.add(alertStatus, BorderLayout.CENTER);
 		body.add(alertsRow);
 
-		alertAction.setFont(FontManager.getRunescapeSmallFont());
+		alertAction.setFont(PanelFonts.small());
 		alertAction.setFocusable(false);
 		alertAction.addActionListener(e ->
 		{
@@ -94,7 +105,7 @@ public class MicrobotCloudPanel extends JPanel
 		body.add(alertAction);
 
 		JButton dashboard = new JButton("Open dashboard");
-		dashboard.setFont(FontManager.getRunescapeSmallFont());
+		dashboard.setFont(PanelFonts.small());
 		dashboard.setFocusable(false);
 		dashboard.setToolTipText(DASHBOARD);
 		dashboard.addActionListener(e ->
@@ -128,7 +139,7 @@ public class MicrobotCloudPanel extends JPanel
 		chip.setOpaque(true);
 		chip.setBackground(ColorScheme.BRAND_ORANGE);
 		chip.setForeground(ColorScheme.DARKER_GRAY_COLOR);
-		chip.setFont(FontManager.getRunescapeSmallFont());
+		chip.setFont(PanelFonts.small());
 		chip.setBorder(new EmptyBorder(0, 4, 0, 4));
 		chip.setToolTipText("New in Microbot");
 		return chip;

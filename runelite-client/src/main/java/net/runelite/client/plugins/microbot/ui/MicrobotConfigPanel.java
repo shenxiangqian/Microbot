@@ -44,6 +44,7 @@ import net.runelite.client.plugins.microbot.breakhandler.breakhandlerv2.PluginSt
 import net.runelite.client.plugins.microbot.breakhandler.breakhandlerv2.PluginStopOption;
 import net.runelite.client.plugins.microbot.inventorysetups.InventorySetup;
 import net.runelite.client.plugins.microbot.inventorysetups.MInventorySetupsPlugin;
+import net.runelite.client.ui.ClientTheme;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.DynamicGridLayout;
 import net.runelite.client.ui.FontManager;
@@ -169,7 +170,7 @@ class MicrobotConfigPanel extends MicrobotPluginPanel {
 
         pluginToggle = new MicrobotPluginToggleButton();
         title = new JLabel();
-        title.setForeground(Color.WHITE);
+        title.setForeground(ClientTheme.classicOr(Color.WHITE, ColorScheme.TEXT_COLOR));
 
         header.add(backBtn, BorderLayout.WEST);
         header.add(title, BorderLayout.CENTER);
@@ -248,7 +249,7 @@ class MicrobotConfigPanel extends MicrobotPluginPanel {
 
         String name = pluginConfig.getName();
         title.setText(name);
-        title.setForeground(Color.WHITE);
+        title.setForeground(ClientTheme.classicOr(Color.WHITE, ColorScheme.TEXT_COLOR));
         title.setToolTipText("<html>" + name + ":<br>" + pluginConfig.getDescription() + "</html>");
 
         String iname = pluginConfig.getInternalPluginHubName();
@@ -373,7 +374,7 @@ class MicrobotConfigPanel extends MicrobotPluginPanel {
             item.setMinimumSize(new Dimension(PANEL_WIDTH, 0));
             String name = cid.getItem().name();
             JLabel configEntryName = new JLabel(name);
-            configEntryName.setForeground(Color.WHITE);
+            configEntryName.setForeground(ClientTheme.classicOr(Color.WHITE, ColorScheme.TEXT_COLOR));
             String description = cid.getItem().description();
             if (!"".equals(description)) {
                 configEntryName.setToolTipText("<html>" + name + ":<br>" + description + "</html>");
@@ -508,17 +509,22 @@ class MicrobotConfigPanel extends MicrobotPluginPanel {
         panel.setLayout(new BorderLayout());
         panel.setBorder(new CompoundBorder(
                 new EmptyBorder(10, 10, 10, 10), // Outer padding
-                new LineBorder(Color.GRAY, 1)    // Border around the panel
+                ClientTheme.redesign() ? new MatteBorder(0, 3, 0, 0, ColorScheme.BRAND_ORANGE) : new LineBorder(Color.GRAY, 1)
         ));
 
         // Create the body/content panel
         JPanel bodyPanel = new JPanel();
         bodyPanel.setLayout(new BoxLayout(bodyPanel, BoxLayout.Y_AXIS)); // Vertical alignment
         bodyPanel.setBorder(new EmptyBorder(10, 10, 10, 10)); // Padding inside the body
-        bodyPanel.setBackground(new Color(0, 142, 255, 50));
-        JLabel bodyLabel1 = new JLabel("<html>" + ci.value() + "</html>");
-        bodyLabel1.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
-        bodyPanel.add(bodyLabel1);
+        JLabel bodyLabel = new JLabel("<html>" + ci.value() + "</html>");
+        if (ClientTheme.redesign()) {
+            bodyPanel.setBackground(ColorScheme.DARKER_GRAY_COLOR);
+            bodyLabel.setForeground(ColorScheme.TEXT_COLOR);
+        } else {
+            bodyPanel.setBackground(new Color(0, 142, 255, 50));
+            bodyLabel.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 12));
+        }
+        bodyPanel.add(bodyLabel);
         bodyPanel.add(Box.createRigidArea(new Dimension(0, 5))); // Spacer between components
 
         panel.add(bodyPanel, BorderLayout.CENTER);

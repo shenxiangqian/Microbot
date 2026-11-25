@@ -41,6 +41,7 @@ import java.util.Map;
 import java.util.Properties;
 import javax.swing.UIDefaults;
 import lombok.SneakyThrows;
+import net.runelite.client.ui.ClientTheme;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
 
@@ -75,6 +76,13 @@ public class RuneLiteLAF extends FlatDarkLaf
 				}
 			}
 		}
+		if (ClientTheme.redesign())
+		{
+			try (InputStream is = RuneLiteLAF.class.getResourceAsStream("RuneLiteLAF-redesign.properties"))
+			{
+				p.load(new InputStreamReader(is, StandardCharsets.UTF_8));
+			}
+		}
 		for (Map.Entry<Object, Object> ent : p.entrySet())
 		{
 			String k = (String) ent.getKey();
@@ -103,6 +111,9 @@ public class RuneLiteLAF extends FlatDarkLaf
 			}
 		}
 
+		extras.putAll(ClientTheme.themedLafExtras());
+		// typed values from ClientTheme only, never user strings; after the themed extras so a custom style wins
+		extras.putAll(ClientTheme.current().lafExtras());
 		setExtraDefaults(extras);
 	}
 
