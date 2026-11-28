@@ -6,7 +6,6 @@ import net.runelite.client.game.ItemEquipmentStats;
 import net.runelite.client.game.ItemStats;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.util.equipment.Rs2Equipment;
-import net.runelite.client.plugins.microbot.util.gameobject.Rs2GameObject;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2Inventory;
 import net.runelite.client.plugins.microbot.util.inventory.Rs2ItemModel;
 
@@ -120,13 +119,6 @@ public final class SlashWebCapability {
         return sleepUntil(() -> Rs2Equipment.isWearing(itemId), 2_000);
     }
 
-    public static boolean isTransportObjectPresent(Transport transport) {
-        if (transport == null || transport.getOrigin() == null || transport.getObjectId() <= 0) {
-            return false;
-        }
-        return !Rs2GameObject.getAll(
-                object -> object.getId() == transport.getObjectId(), transport.getOrigin(), 2).isEmpty();
-    }
 
     public static Rs2ItemModel inventorySlashWeapon() {
         return Rs2Inventory.items()
